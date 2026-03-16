@@ -67,43 +67,22 @@ Logs:        nemoclaw my-assistant logs --follow
 [INFO]  === Installation complete ===
 ```
 
-### Connect to the Sandbox and Run Your First Agent
+### Chat with the Agent
 
-Follow these steps to connect to the sandbox and run your first agent prompt.
+After installation, launch the OpenClaw TUI to start chatting with the agent:
 
-1. Verify the sandbox is running:
+```console
+$ openclaw tui
+```
 
-   ```console
-   $ nemoclaw my-assistant status
-   ```
+The TUI opens an interactive chat interface inside the sandbox. Type a message and press Enter to send it to the agent.
 
-   ```
-   Sandboxes:
-     my-assistant * (nvidia/nemotron-3-super-120b-a12b)
-   ```
+You can also connect to the sandbox terminal directly:
 
-2. Connect to the sandbox:
-
-   ```console
-   $ nemoclaw my-assistant connect
-   sandbox@my-assistant:~$
-   ```
-
-   The CLI opens an interactive shell with Landlock, seccomp, and network namespace isolation active.
-
-3. Verify that OpenClaw is healthy:
-
-   ```console
-   $ openclaw status
-   ```
-
-4. Send a test message to the agent:
-
-   ```console
-   $ openclaw agent --agent main --local -m "hello" --session-id test
-   ```
-
-   If you receive a response, you are ready to start using your agent.
+```console
+$ nemoclaw my-assistant connect
+sandbox@my-assistant:~$ openclaw agent --agent main --local -m "hello" --session-id test
+```
 
 ## How It Works
 

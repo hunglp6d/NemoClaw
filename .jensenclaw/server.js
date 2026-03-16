@@ -173,7 +173,6 @@ function proxyInference(messages, res) {
     stream: true,
     temperature: 1.0,
     top_p: 0.95,
-    max_tokens: 8192,
   };
 
   if (curated) {

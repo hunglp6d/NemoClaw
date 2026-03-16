@@ -3,7 +3,6 @@
 
 import {
   CURATED_MODELS,
-  DEFAULT_MAX_TOKENS,
   DEFAULT_TEMPERATURE,
   DEFAULT_TOP_P,
   PROXY_HEADERS,
@@ -45,9 +44,6 @@ export function transformRequest(
   }
   if (merged["top_p"] === undefined) {
     merged["top_p"] = DEFAULT_TOP_P;
-  }
-  if (merged["max_tokens"] === undefined) {
-    merged["max_tokens"] = DEFAULT_MAX_TOKENS;
   }
   if (merged["stream"] !== false) {
     merged["stream"] = true;

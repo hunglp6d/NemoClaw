@@ -13,7 +13,6 @@ export interface CuratedModel {
 
 export const DEFAULT_TEMPERATURE = 1.0;
 export const DEFAULT_TOP_P = 0.95;
-export const DEFAULT_MAX_TOKENS = 8192;
 
 export const PROXY_HEADERS: Record<string, string> = {
   "NVCF-POLL-SECONDS": "1800",

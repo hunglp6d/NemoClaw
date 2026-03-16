@@ -5,7 +5,7 @@ import http from "node:http";
 import https from "node:https";
 import { resolveModel, transformRequest } from "./transform.js";
 import { PROXY_HEADERS } from "./models.js";
-import { shouldRetry, shouldRetryStreamChunk, buildRetryBody } from "./retry.js";
+import { shouldRetry, shouldRetryStreamChunk } from "./retry.js";
 
 export interface ProxyServerOptions {
   port: number;
@@ -32,8 +32,6 @@ function forwardRequest(
   extraHeaders: Record<string, string>,
   res: http.ServerResponse,
   isStreaming: boolean,
-  originalBody: Record<string, unknown>,
-  contextWindow: number | undefined,
   logger?: ProxyServerOptions["logger"],
 ): void {
   const url = new URL(`${upstreamUrl.replace(/\/+$/, "")}/chat/completions`);
@@ -89,29 +87,18 @@ function forwardRequest(
 
       proxyRes.on("end", () => {
         if (detectedTruncation) {
-          res.write(`\ndata: ${JSON.stringify({ x_retry_suggested: true, message: "Response truncated due to max_tokens. Retry with max_tokens multiplied by 4." })}\n\n`);
+          res.write(`\ndata: ${JSON.stringify({ x_retry_suggested: true, message: "Response truncated due to length. Client should retry the request." })}\n\n`);
         }
         res.end();
       });
     } else {
-      // Non-streaming: buffer entire response, check for retry
+      // Non-streaming: buffer response, flag truncation
       let respBody = "";
       proxyRes.on("data", (c: Buffer) => (respBody += c.toString()));
       proxyRes.on("end", () => {
-        try {
-          const parsed = JSON.parse(respBody) as Record<string, unknown>;
-          if (shouldRetry(parsed)) {
-            logger?.info("Detected finish_reason: length — retrying with 4x max_tokens");
-            const retryBodyObj = buildRetryBody(originalBody, contextWindow);
-            const retryStr = JSON.stringify(retryBodyObj);
-            forwardRequest(
-              upstreamUrl, apiKey, retryStr, extraHeaders, res,
-              false, retryBodyObj, contextWindow, logger,
-            );
-            return;
-          }
-        } catch {
-          // Response wasn't valid JSON — pass through as-is
+        if (shouldRetry(JSON.parse(respBody) as Record<string, unknown>)) {
+          logger?.info("Detected finish_reason: length — client should retry");
+          res.setHeader("X-Retry-Suggested", "true");
         }
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(respBody);
@@ -175,25 +162,20 @@ export function startProxyServer(opts: ProxyServerOptions): http.Server {
       let finalBodyStr: string;
       let extraHeaders: Record<string, string>;
       let isStreaming: boolean;
-      let contextWindow: number | undefined;
 
       if (curatedModel) {
         const result = transformRequest(body, curatedModel);
         finalBodyStr = JSON.stringify(result.body);
         extraHeaders = result.headers;
         isStreaming = result.body["stream"] !== false;
-        contextWindow = curatedModel.contextWindow;
         logger?.info(`[policy-proxy] Curated model: ${modelField} -> ${curatedModel.prefixedId}`);
       } else {
-        // Non-curated: pass through with standard proxy headers only
         extraHeaders = { ...PROXY_HEADERS };
         finalBodyStr = rawBody;
         isStreaming = body["stream"] !== false;
-        contextWindow = undefined;
         logger?.info(`[policy-proxy] Pass-through model: ${modelField}`);
       }
 
-      // Use the client's Authorization header if present, fall back to configured key
       const clientAuth = req.headers["authorization"];
       const effectiveKey = clientAuth
         ? clientAuth.replace(/^Bearer\s+/i, "")
@@ -201,8 +183,7 @@ export function startProxyServer(opts: ProxyServerOptions): http.Server {
 
       forwardRequest(
         upstreamUrl, effectiveKey, finalBodyStr, extraHeaders,
-        res, isStreaming, curatedModel ? JSON.parse(finalBodyStr) as Record<string, unknown> : body,
-        contextWindow, logger,
+        res, isStreaming, logger,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

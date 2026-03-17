@@ -2739,10 +2739,10 @@ async function setupNim(gpu) {
 
   // Detect local inference options
   const hasOllama = !!runCapture("command -v ollama", { ignoreError: true });
-  const ollamaRunning = !!runCapture("curl -sf http://localhost:11434/api/tags 2>/dev/null", {
+  const ollamaRunning = !!runCapture("curl -sf http://127.0.0.1:11434/api/tags 2>/dev/null", {
     ignoreError: true,
   });
-  const vllmRunning = !!runCapture("curl -sf http://localhost:8000/v1/models 2>/dev/null", {
+  const vllmRunning = !!runCapture("curl -sf http://127.0.0.1:8000/v1/models 2>/dev/null", {
     ignoreError: true,
   });
   const requestedProvider = isNonInteractive() ? getNonInteractiveProvider() : null;
@@ -2760,7 +2760,7 @@ async function setupNim(gpu) {
     options.push({
       key: "ollama",
       label:
-        `Local Ollama (localhost:11434)${ollamaRunning ? " — running" : ""}` +
+        `Local Ollama (127.0.0.1:11434)${ollamaRunning ? " — running" : ""}` +
         (ollamaRunning ? " (suggested)" : ""),
     });
   }

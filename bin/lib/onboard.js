@@ -64,26 +64,18 @@ function shellQuote(value) {
 
 function buildSandboxConfigSyncScript(selectionConfig) {
   const providerType =
-    selectionConfig.endpointType === "ollama"
-      ? "ollama-local"
+    selectionConfig.profile === "inference-local"
+      ? selectionConfig.model === DEFAULT_OLLAMA_MODEL
+        ? "ollama-local"
+        : "nvidia-nim"
       : selectionConfig.endpointType === "vllm"
         ? "vllm-local"
         : "nvidia-nim";
   const primaryModel = getOpenClawPrimaryModel(providerType, selectionConfig.model);
-  const providerKey =
-    selectionConfig.endpointType === "ollama"
-      ? "ollama"
-      : selectionConfig.endpointType === "vllm"
-        ? "vllm"
-        : "nvidia";
+  const providerKey = "inference";
   const providerConfig = {
     baseUrl: selectionConfig.endpointUrl,
-    apiKey:
-      selectionConfig.endpointType === "ollama"
-        ? "ollama-local"
-        : selectionConfig.endpointType === "vllm"
-          ? "vllm-local"
-          : "openshell-managed",
+    apiKey: "unused",
     api: "openai-completions",
     models: [
       {

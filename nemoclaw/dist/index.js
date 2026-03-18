@@ -59,14 +59,9 @@ function activeModelEntries(onboardCfg) {
             },
         ];
     }
-    const entryId = onboardCfg.endpointType === "ollama"
-        ? `ollama/${onboardCfg.model}`
-        : onboardCfg.endpointType === "vllm"
-            ? `vllm/${onboardCfg.model}`
-            : onboardCfg.model;
     return [
         {
-            id: entryId,
+            id: `inference/${onboardCfg.model}`,
             label: onboardCfg.model,
             contextWindow: 131072,
             maxOutput: 8192,
@@ -77,38 +72,14 @@ function registeredProviderForConfig(onboardCfg, providerCredentialEnv) {
     const authLabel = providerCredentialEnv === "NVIDIA_API_KEY"
         ? `NVIDIA API Key (${providerCredentialEnv})`
         : `OpenAI API Key (${providerCredentialEnv})`;
-    switch (onboardCfg?.endpointType) {
-        case "ollama":
-            return {
-                id: "ollama",
-                label: "Local Ollama",
-                aliases: ["ollama-local"],
-                envVars: [providerCredentialEnv],
-                models: { chat: activeModelEntries(onboardCfg) },
-                auth: [{ type: "bearer", envVar: providerCredentialEnv, headerName: "Authorization", label: authLabel }],
-            };
-        case "vllm":
-            return {
-                id: "vllm",
-                label: "Local vLLM",
-                aliases: ["vllm-local"],
-                envVars: [providerCredentialEnv],
-                models: { chat: activeModelEntries(onboardCfg) },
-                auth: [{ type: "bearer", envVar: providerCredentialEnv, headerName: "Authorization", label: authLabel }],
-            };
-        default:
-            return {
-                id: "nvidia-nim",
-                label: onboardCfg
-                    ? `NVIDIA NIM (${onboardCfg.endpointType}${onboardCfg.ncpPartner ? ` - ${onboardCfg.ncpPartner}` : ""})`
-                    : "NVIDIA NIM (build.nvidia.com)",
-                docsPath: "https://build.nvidia.com/docs",
-                aliases: ["nvidia", "nim"],
-                envVars: [providerCredentialEnv],
-                models: { chat: activeModelEntries(onboardCfg) },
-                auth: [{ type: "bearer", envVar: providerCredentialEnv, headerName: "Authorization", label: authLabel }],
-            };
-    }
+    return {
+        id: "inference",
+        label: "Managed Inference Route",
+        aliases: ["inference-local", "nemoclaw"],
+        envVars: [providerCredentialEnv],
+        models: { chat: activeModelEntries(onboardCfg) },
+        auth: [{ type: "bearer", envVar: providerCredentialEnv, headerName: "Authorization", label: authLabel }],
+    };
 }
 // ---------------------------------------------------------------------------
 // Plugin entry point

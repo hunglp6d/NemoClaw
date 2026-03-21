@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -8,6 +11,7 @@ const {
   buildSandboxConfigSyncScript,
   getInstalledOpenshellVersion,
   getStableGatewayImageRef,
+  writeSandboxConfigSyncFile,
 } = require("../bin/lib/onboard");
 
 describe("onboard helpers", () => {
@@ -43,5 +47,16 @@ describe("onboard helpers", () => {
     );
     assert.equal(getStableGatewayImageRef("openshell 0.0.13-dev.8+gbbcaed2ea"), "ghcr.io/nvidia/openshell/cluster:0.0.13");
     assert.equal(getStableGatewayImageRef("bogus"), null);
+  });
+
+  it("writes sandbox sync scripts to a temp file for stdin redirection", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-test-"));
+    try {
+      const scriptFile = writeSandboxConfigSyncFile("echo test", tmpDir, 1234);
+      assert.equal(scriptFile, path.join(tmpDir, "nemoclaw-sync-1234.sh"));
+      assert.equal(fs.readFileSync(scriptFile, "utf8"), "echo test\n");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

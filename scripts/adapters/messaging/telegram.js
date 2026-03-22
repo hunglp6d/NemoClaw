@@ -31,7 +31,10 @@ module.exports = function createAdapter(config) {
           let buf = "";
           res.on("data", (c) => (buf += c));
           res.on("end", () => {
-            try { resolve(JSON.parse(buf)); } catch { resolve({ ok: false, error: buf }); }
+            try {
+              const json = JSON.parse(buf);
+              if (json.ok) resolve(json); else reject(new Error(json.description || "Telegram API error"));
+            } catch { reject(new Error(`Unparseable Telegram response: ${buf.slice(0, 200)}`)); }
           });
         },
       );
@@ -46,9 +49,11 @@ module.exports = function createAdapter(config) {
     name: "telegram",
 
     async start(onMessage) {
-      const me = await tgApi("getMe", {});
-      if (!me.ok) {
-        throw new Error(`Failed to connect to Telegram: ${JSON.stringify(me)}`);
+      let me;
+      try {
+        me = await tgApi("getMe", {});
+      } catch (err) {
+        throw new Error(`Failed to connect to Telegram: ${err.message}`);
       }
 
       const botName = `@${me.result.username}`;

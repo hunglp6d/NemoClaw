@@ -48,9 +48,15 @@ try {
  */
 function runAgentInSandbox(message, sessionId) {
   return new Promise((resolve) => {
-    const sshConfig = execFileSync(OPENSHELL, ["sandbox", "ssh-config", SANDBOX], {
-      encoding: "utf-8",
-    });
+    let sshConfig;
+    try {
+      sshConfig = execFileSync(OPENSHELL, ["sandbox", "ssh-config", SANDBOX], {
+        encoding: "utf-8",
+      });
+    } catch (err) {
+      resolve(`Error: sandbox SSH config failed — is '${SANDBOX}' running? ${err.message || err}`);
+      return;
+    }
 
     const confDir = fs.mkdtempSync("/tmp/nemoclaw-bridge-ssh-");
     const confPath = `${confDir}/config`;

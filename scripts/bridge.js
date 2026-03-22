@@ -144,7 +144,7 @@ async function runBridge(config) {
   const maxChunk = config.messaging.max_chunk_size;
 
   async function onMessage(msg) {
-    console.log(`[${config.name}] [${msg.channelId}] ${msg.userName}: ${msg.text}`);
+    console.log(`[${config.name}] [${msg.channelId}] ${msg.userName}: inbound (len=${msg.text.length})`);
 
     // Typing indicator
     await msg.sendTyping();
@@ -153,7 +153,7 @@ async function runBridge(config) {
     try {
       const response = await runAgentInSandbox(msg.text, `${prefix}-${msg.channelId}`);
       clearInterval(typingInterval);
-      console.log(`[${config.name}] [${msg.channelId}] agent: ${response.slice(0, 100)}...`);
+      console.log(`[${config.name}] [${msg.channelId}] agent: response (len=${response.length})`);
 
       // Chunk response per platform limit
       const chunks = [];

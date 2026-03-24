@@ -149,42 +149,40 @@ async function deploy(instanceName) {
   run(`brev refresh`, { ignoreError: true });
 
   // ── SSH trust-on-first-use (TOFU) ──────────────────────────────
-  // We allow the first probe to accept any key (the VM was just created),
-  // then immediately pin the host key for every subsequent connection.
+  // Pin the host key on first contact via ssh-keyscan, then verify all
+  // subsequent connections against it. We keyscan first (not a probe with
+  // StrictHostKeyChecking=no) to avoid a TOCTOU window where an attacker
+  // could interpose between an unauthenticated probe and key capture.
   const khDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-ssh-"));
   const knownHostsFile = path.join(khDir, "known_hosts");
+
+  // Resolve the real hostname from SSH config — brev aliases aren't DNS-resolvable,
+  // so ssh-keyscan needs the actual IP (e.g., "my-test-box" → "34.45.157.55").
+  // ssh -G only reads local config, no network required.
+  const sshConfigOut = execFileSync("ssh", ["-G", name], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+  const realHost = sshConfigOut.split("\n").find((l) => l.startsWith("hostname "))?.split(" ")[1] || name;
 
   process.stdout.write(`  Waiting for SSH `);
   for (let i = 0; i < 60; i++) {
     try {
-      execFileSync("ssh", ["-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no", name, "echo", "ok"], { encoding: "utf-8", stdio: "ignore" });
-      process.stdout.write(` ${G}✓${R}\n`);
-      break;
-    } catch {
-      if (i === 59) {
-        process.stdout.write("\n");
-        console.error(`  Timed out waiting for SSH to ${name}`);
-        fs.rmSync(khDir, { recursive: true, force: true });
-        process.exit(1);
+      const hostKeys = execFileSync("ssh-keyscan", ["-T", "5", "-H", realHost], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+      if (hostKeys.trim()) {
+        fs.writeFileSync(knownHostsFile, hostKeys, { mode: 0o600 });
+        process.stdout.write(` ${G}✓${R}\n`);
+        break;
       }
-      process.stdout.write(".");
-      spawnSync("sleep", ["3"]);
+    } catch {}
+    if (i === 59) {
+      process.stdout.write("\n");
+      console.error(`  Timed out waiting for SSH to ${name} (keyscan failed after 60 attempts)`);
+      fs.rmSync(khDir, { recursive: true, force: true });
+      process.exit(1);
     }
+    process.stdout.write(".");
+    spawnSync("sleep", ["3"]);
   }
 
   try {
-    // Pin the host key now that the VM is reachable.
-    // Resolve the real hostname from SSH config — brev aliases aren't DNS-resolvable,
-    // so ssh-keyscan needs the actual IP (e.g., "my-test-box" → "34.45.157.55").
-    const sshConfigOut = execFileSync("ssh", ["-G", name], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
-    const realHost = sshConfigOut.split("\n").find((l) => l.startsWith("hostname "))?.split(" ")[1] || name;
-    const hostKeys = execFileSync("ssh-keyscan", ["-H", realHost], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
-    if (!hostKeys.trim()) {
-      console.error(`  Failed to capture host keys for ${realHost}. Cannot verify host identity.`);
-      process.exit(1);
-    }
-    fs.writeFileSync(knownHostsFile, hostKeys, { mode: 0o600 });
-
     const sshOpts = `-o UserKnownHostsFile=${shellQuote(knownHostsFile)} -o StrictHostKeyChecking=yes -o LogLevel=ERROR`;
 
     console.log("  Syncing NemoClaw to VM...");

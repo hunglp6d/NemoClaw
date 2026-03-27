@@ -113,6 +113,7 @@ config = { \
     'agents': {'defaults': {'model': {'primary': primary_model_ref}}}, \
     'models': {'mode': 'merge', 'providers': providers}, \
     'channels': {'defaults': {'configWrites': False}}, \
+    'ui': {'assistant': {'name': 'Lew Alcindor'}}, \
     'gateway': { \
         'mode': 'local', \
         'controlUi': { \

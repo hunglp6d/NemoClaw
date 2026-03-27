@@ -134,6 +134,16 @@ function dockerRunning(): boolean {
     execSync("docker info", { stdio: "pipe", timeout: 10_000, env: baseEnv });
     return true;
   } catch {
+    // On macOS, try starting Colima if it's installed but not running.
+    if (process.platform === "darwin") {
+      try {
+        execSync("command -v colima", { stdio: "pipe", timeout: 5000 });
+        console.log("[e2e] Docker not running — starting Colima...");
+        execSync("colima start", { stdio: "inherit", timeout: 120_000 });
+        execSync("docker info", { stdio: "pipe", timeout: 10_000 });
+        return true;
+      } catch { /* Colima not available or failed to start */ }
+    }
     return false;
   }
 }
@@ -409,11 +419,14 @@ describeE2E("config mutability E2E", () => {
       // Upload a config request file into the sandbox's config-requests dir.
       // The patched supervisor scanner polls every 5s and submits it as a
       // PolicyChunk with rule_name "config:<key>".
+      //
+      // Scenario: rename the assistant from "Lew Alcindor" to "Kareem Abdul-Jabbar"
+      // via ui.assistant.name — a non-inference user-preference field.
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-e2e-req-"));
-      const reqFile = path.join(tmpDir, "test-model-change.json");
+      const reqFile = path.join(tmpDir, "test-name-change.json");
       fs.writeFileSync(reqFile, JSON.stringify({
-        key: "agents.defaults.model.primary",
-        value: "inference/SCANNER-TEST-MODEL",
+        key: "ui.assistant.name",
+        value: "Kareem Abdul-Jabbar",
       }) + "\n");
 
       sandboxUploadFile(reqFile, "/sandbox/.openclaw-data/config-requests/");

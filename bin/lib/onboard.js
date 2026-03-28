@@ -1614,36 +1614,61 @@ async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
     console.log(`  Using pinned OpenShell gateway image: ${gatewayEnv.OPENSHELL_CLUSTER_IMAGE}`);
   }
 
-  const startResult = runOpenshell(["gateway", "start", ...gwArgs], { ignoreError: true, env: gatewayEnv });
-  if (startResult.status !== 0) {
-    console.error("  Gateway failed to start. Cleaning up stale state...");
+  // Retry gateway start with exponential backoff. On some hosts (Horde VMs,
+  // first-run environments) the embedded k3s needs more time than OpenShell's
+  // internal health-check window allows. Retrying after a clean destroy lets
+  // the second attempt benefit from cached images and cleaner cgroup state.
+  // See: https://github.com/NVIDIA/OpenShell/issues/433
+  const MAX_GATEWAY_ATTEMPTS = 3;
+  const GATEWAY_RETRY_DELAYS = [10, 30]; // seconds before 2nd, 3rd attempt
+  let gatewayStarted = false;
+
+  for (let attempt = 0; attempt < MAX_GATEWAY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      const delay = GATEWAY_RETRY_DELAYS[attempt - 1];
+      console.log(`  Retrying gateway start in ${delay}s (attempt ${attempt + 1}/${MAX_GATEWAY_ATTEMPTS})...`);
+      sleep(delay);
+    }
+
+    const startResult = runOpenshell(["gateway", "start", ...gwArgs], { ignoreError: true, env: gatewayEnv });
+
+    if (startResult.status === 0) {
+      // Gateway start command succeeded — verify health
+      let healthy = false;
+      for (let i = 0; i < 5; i++) {
+        const status = runCaptureOpenshell(["status"], { ignoreError: true });
+        const namedInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], { ignoreError: true });
+        const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
+        if (isGatewayHealthy(status, namedInfo, currentInfo)) {
+          healthy = true;
+          break;
+        }
+        sleep(2);
+      }
+      if (healthy) {
+        gatewayStarted = true;
+        break;
+      }
+    }
+
+    // This attempt failed — clean up before retry or final exit
     destroyGateway();
+  }
+
+  if (!gatewayStarted) {
     if (exitOnFailure) {
+      console.error(`  Gateway failed to start after ${MAX_GATEWAY_ATTEMPTS} attempts.`);
       console.error("  Stale state removed. Please rerun: nemoclaw onboard");
+      console.error("");
+      console.error("  Troubleshooting:");
+      console.error("    openshell doctor logs --name nemoclaw");
+      console.error("    openshell doctor check --name nemoclaw");
       process.exit(1);
     }
     throw new Error("Gateway failed to start");
   }
 
-  for (let i = 0; i < 5; i++) {
-    const status = runCaptureOpenshell(["status"], { ignoreError: true });
-    const namedInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], { ignoreError: true });
-    const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
-    if (isGatewayHealthy(status, namedInfo, currentInfo)) {
-      console.log("  ✓ Gateway is healthy");
-      break;
-    }
-    if (i === 4) {
-      console.error("  Gateway health check failed. Cleaning up stale state...");
-      destroyGateway();
-      if (exitOnFailure) {
-        console.error("  Stale state removed. Please rerun: nemoclaw onboard");
-        process.exit(1);
-      }
-      throw new Error("Gateway failed to start");
-    }
-    sleep(2);
-  }
+  console.log("  ✓ Gateway is healthy");
 
   // CoreDNS fix — always run. k3s-inside-Docker has broken DNS on all platforms.
   const runtime = getContainerRuntime();

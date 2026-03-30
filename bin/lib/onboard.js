@@ -478,8 +478,8 @@ function upsertProvider(name, type, credentialEnv, baseUrl, env = {}) {
 }
 
 function verifyProviderExists(name) {
-  const output = runCaptureOpenshell(["provider", "get", name], { ignoreError: true });
-  return Boolean(output && !output.includes("not found"));
+  const result = runOpenshell(["provider", "get", name], { ignoreError: true });
+  return result.status === 0;
 }
 
 function verifyInferenceRoute(_provider, _model) {
@@ -1800,7 +1800,7 @@ async function createSandbox(gpu, model, provider, preferredInferenceApi = null,
     upsertProvider("slack-bridge", "generic", "SLACK_BOT_TOKEN", null, { SLACK_BOT_TOKEN: slackToken });
     messagingProviders.push("slack-bridge");
   }
-  const telegramToken = getCredential("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN;
+  const telegramToken = hydrateCredentialEnv("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN;
   if (telegramToken) {
     upsertProvider("telegram-bridge", "generic", "TELEGRAM_BOT_TOKEN", null, { TELEGRAM_BOT_TOKEN: telegramToken });
     messagingProviders.push("telegram-bridge");
@@ -1818,10 +1818,20 @@ async function createSandbox(gpu, model, provider, preferredInferenceApi = null,
   // See: crates/openshell-sandbox/src/secrets.rs (placeholder rewriting),
   //      crates/openshell-router/src/backend.rs (inference auth injection).
   const envArgs = [formatEnvAssignment("CHAT_UI_URL", chatUiUrl)];
-  const sandboxEnv = { ...process.env };
-  delete sandboxEnv.NVIDIA_API_KEY;
-  delete sandboxEnv.DISCORD_BOT_TOKEN;
-  delete sandboxEnv.SLACK_BOT_TOKEN;
+  const blockedSandboxEnvNames = new Set([
+    "NVIDIA_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "COMPATIBLE_API_KEY",
+    "COMPATIBLE_ANTHROPIC_API_KEY",
+    "DISCORD_BOT_TOKEN",
+    "SLACK_BOT_TOKEN",
+    "TELEGRAM_BOT_TOKEN",
+  ]);
+  const sandboxEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !blockedSandboxEnvNames.has(name))
+  );
 
   // Run without piping through awk — the pipe masked non-zero exit codes
   // from openshell because bash returns the status of the last pipeline

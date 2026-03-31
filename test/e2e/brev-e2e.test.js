@@ -134,6 +134,10 @@ describe.runIf(hasRequiredVars)("Brev E2E", () => {
     );
     brev("login", "--token", process.env.BREV_API_TOKEN);
 
+    // Switch to CI org (the refresh token may default to a different org)
+    const BREV_ORG = process.env.BREV_ORG || "Nemoclaw CI/CD";
+    brev("org", "set", BREV_ORG);
+
     // Create instance
     brev("create", INSTANCE_NAME, "--cpu", BREV_CPU, "--detached");
     instanceCreated = true;

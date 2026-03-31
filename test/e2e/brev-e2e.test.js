@@ -114,14 +114,18 @@ describe.runIf(hasRequiredVars)("Brev E2E", () => {
   beforeAll(() => {
 
     // Ensure brev CLI >= v0.6.322 (needed for brev exec)
-    const brevVer = execSync("brev --version 2>&1 || true", { encoding: "utf-8" });
-    if (!brevVer.includes("0.6.322") && !brevVer.includes("0.6.323") && !brevVer.includes("0.6.324") && !brevVer.includes("0.6.325")) {
-      console.log(`[setup] Upgrading brev CLI (current: ${brevVer.trim()})...`);
+    const hasExec = execSync("brev exec --help 2>&1 || true", { encoding: "utf-8" });
+    if (hasExec.includes("unknown command")) {
+      console.log("[setup] brev exec not available, upgrading CLI...");
       execSync(
-        'curl -fsSL -o /tmp/brev.tar.gz "https://github.com/brevdev/brev-cli/releases/download/v0.6.322/brev-cli_0.6.322_linux_amd64.tar.gz" && tar -xzf /tmp/brev.tar.gz -C /usr/local/bin brev && chmod +x /usr/local/bin/brev',
+        'curl -fsSL -o /tmp/brev.tar.gz "https://github.com/brevdev/brev-cli/releases/download/v0.6.322/brev-cli_0.6.322_linux_amd64.tar.gz"'
+        + " && tar -xzf /tmp/brev.tar.gz -C /tmp brev"
+        + " && sudo cp /tmp/brev /usr/local/bin/brev"
+        + " && sudo chmod +x /usr/local/bin/brev",
         { encoding: "utf-8", timeout: 30_000 },
       );
-      console.log(`[setup] Upgraded to: ${execSync("brev --version 2>&1", { encoding: "utf-8" }).trim()}`);
+      const newVer = execSync("brev --version 2>&1", { encoding: "utf-8" }).trim();
+      console.log(`[setup] Upgraded to: ${newVer}`);
     }
 
     // Authenticate with Brev

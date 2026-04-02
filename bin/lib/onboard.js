@@ -3412,10 +3412,20 @@ async function setupPoliciesWithSelection(sandboxName, options = {}) {
   }
 
   const knownPresets = new Set(allPresets.map((p) => p.name));
-  const invalidPresets = interactiveChoice.filter((name) => !knownPresets.has(name));
-  if (invalidPresets.length > 0) {
+  let invalidPresets = interactiveChoice.filter((name) => !knownPresets.has(name));
+  while (invalidPresets.length > 0) {
     console.error(`  Unknown policy preset(s): ${invalidPresets.join(", ")}`);
-    process.exit(1);
+    console.log("  Available presets:");
+    for (const p of allPresets) {
+      console.log(`    - ${p.name}`);
+    }
+    const retry = await prompt("  Enter preset names (comma-separated), or leave empty to skip: ");
+    if (!retry.trim()) {
+      console.log("  Skipping policy presets.");
+      return [];
+    }
+    interactiveChoice = parsePolicyPresetEnv(retry);
+    invalidPresets = interactiveChoice.filter((name) => !knownPresets.has(name));
   }
 
   if (onSelection) onSelection(interactiveChoice);
@@ -3441,45 +3451,13 @@ const { resolveDashboardForwardTarget, buildControlUiUrls } = dashboard;
 function ensureDashboardForward(sandboxName, chatUiUrl = `http://127.0.0.1:${CONTROL_UI_PORT}`) {
   const forwardTarget = resolveDashboardForwardTarget(chatUiUrl);
   runOpenshell(["forward", "stop", String(CONTROL_UI_PORT)], { ignoreError: true });
-
-  const tmpErr = path.join(os.tmpdir(), `nemoclaw-fwd-${Date.now()}.err`);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    // Redirect stderr to a file instead of piping — prevents spawnSync from
-    // blocking on inherited pipe fds when --background forks a child process.
-    run(
-      openshellShellCommand(["forward", "start", "--background", forwardTarget, sandboxName]) +
-        ` 2>${shellQuote(tmpErr)}`,
-      { ignoreError: true, stdio: ["ignore", "ignore", "ignore"] },
-    );
-
-    let errText = "";
-    try {
-      errText = fs.readFileSync(tmpErr, "utf8").trim();
-    } catch (_e) {
-      /* may not exist */
-    }
-    try {
-      fs.unlinkSync(tmpErr);
-    } catch (_e) {
-      /* best-effort cleanup */
-    }
-
-    // Verify the forward is actually active via openshell forward list.
-    const fwdList = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-    if (fwdList && fwdList.includes(String(CONTROL_UI_PORT))) {
-      return true;
-    }
-
-    if (errText) {
-      console.warn(`  forward start attempt ${attempt + 1} stderr: ${errText}`);
-    }
-    if (attempt < 2) sleep(2);
-  }
-
-  console.warn(
-    `  \u26a0 Dashboard forward failed after 3 attempts \u2014 port ${CONTROL_UI_PORT} not forwarded`,
-  );
-  return false;
+  // Use stdio "ignore" to prevent spawnSync from waiting on inherited pipe fds.
+  // The --background flag forks a child that inherits stdout/stderr; if those are
+  // pipes, spawnSync blocks until the background process exits (never).
+  runOpenshell(["forward", "start", "--background", forwardTarget, sandboxName], {
+    ignoreError: true,
+    stdio: ["ignore", "ignore", "ignore"],
+  });
 }
 
 function findOpenclawJsonPath(dir) {

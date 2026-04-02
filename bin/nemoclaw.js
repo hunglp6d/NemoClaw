@@ -216,16 +216,41 @@ function stop() {
   run(`bash "${SCRIPTS}/start-services.sh" --stop`);
 }
 
-function debug(args) {
-  const result = spawnSync("bash", [path.join(SCRIPTS, "debug.sh"), ...args], {
-    stdio: "inherit",
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      SANDBOX_NAME: registry.listSandboxes().defaultSandbox || "",
-    },
-  });
-  exitWithSpawnResult(result);
+async function debug(args) {
+  const { runDebug } = require("./lib/debug");
+  const opts = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--help" || args[i] === "-h") {
+      console.log(`Usage: nemoclaw debug [OPTIONS]
+
+Collect NemoClaw diagnostic information for bug reports.
+
+Options:
+  --sandbox NAME    Target sandbox (default: $NEMOCLAW_SANDBOX or auto-detect)
+  --quick, -q       Collect minimal diagnostics only
+  --output PATH     Write tarball to PATH (e.g. /tmp/nemoclaw-debug.tar.gz)
+  --help            Show this help
+
+Examples:
+  nemoclaw debug
+  nemoclaw debug --quick
+  nemoclaw debug --output /tmp/diag.tar.gz`);
+      return;
+    } else if (args[i] === "--quick" || args[i] === "-q") {
+      opts.quick = true;
+    } else if ((args[i] === "--output" || args[i] === "-o") && args[i + 1]) {
+      opts.output = args[++i];
+    } else if (args[i] === "--sandbox" && args[i + 1]) {
+      opts.sandboxName = args[++i];
+    } else {
+      console.error(`Unknown option: ${args[i]} (see --help)`);
+      process.exit(1);
+    }
+  }
+  if (!opts.sandboxName) {
+    opts.sandboxName = registry.listSandboxes().defaultSandbox || "";
+  }
+  await runDebug(opts);
 }
 
 function uninstall(args) {
@@ -466,7 +491,7 @@ const [cmd, ...args] = process.argv.slice(2);
       case "start":       await start(); break;
       case "stop":        stop(); break;
       case "status":      showStatus(); break;
-      case "debug":       debug(args); break;
+      case "debug":       await debug(args); break;
       case "uninstall":   uninstall(args); break;
       case "list":        listSandboxes(); break;
       case "--version":

@@ -2167,13 +2167,7 @@ async function createSandbox(
         console.log(`  Sandbox '${sandboxName}' exists but messaging providers are not attached.`);
         console.log("  Recreating to ensure credentials flow through the provider pipeline.");
       } else {
-        const fwdOk = ensureDashboardForward(sandboxName, chatUiUrl);
-        if (!fwdOk) {
-          console.warn("  Dashboard will not be reachable until the forward is established.");
-          console.warn(
-            `  Manual fix: openshell forward start --background ${CONTROL_UI_PORT} ${sandboxName}`,
-          );
-        }
+        ensureDashboardForward(sandboxName, chatUiUrl);
         if (isNonInteractive()) {
           note(`  [non-interactive] Sandbox '${sandboxName}' exists and is ready — reusing it`);
         } else {
@@ -2374,13 +2368,7 @@ async function createSandbox(
   // Release any stale forward on port 18789 before claiming it for the new sandbox.
   // A previous onboard run may have left the port forwarded to a different sandbox,
   // which would silently prevent the new sandbox's dashboard from being reachable.
-  const forwardOk = ensureDashboardForward(sandboxName, chatUiUrl);
-  if (!forwardOk) {
-    console.warn("  Dashboard will not be reachable until the forward is established.");
-    console.warn(
-      `  Manual fix: openshell forward start --background ${CONTROL_UI_PORT} ${sandboxName}`,
-    );
-  }
+  ensureDashboardForward(sandboxName, chatUiUrl);
 
   // Register only after confirmed ready — prevents phantom entries
   registry.registerSandbox({

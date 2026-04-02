@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -12,14 +12,13 @@ import {
   unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
-import { execa } from "execa";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface ServiceOptions {
-  /** Sandbox name (default: "default"). */
+  /** Sandbox name — must match the name used by start/stop/status. */
   sandboxName?: string;
   /** Dashboard port for cloudflared (default: 18789). */
   dashboardPort?: number;
@@ -71,15 +70,19 @@ function readPid(pidDir: string, name: string): number | null {
   return Number.isFinite(pid) && pid > 0 ? pid : null;
 }
 
-function isRunning(pidDir: string, name: string): boolean {
-  const pid = readPid(pidDir, name);
-  if (pid === null) return false;
+function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
   } catch {
     return false;
   }
+}
+
+function isRunning(pidDir: string, name: string): boolean {
+  const pid = readPid(pidDir, name);
+  if (pid === null) return false;
+  return isAlive(pid);
 }
 
 function writePid(pidDir: string, name: string, pid: number): void {
@@ -136,28 +139,51 @@ function startService(
   info(`${name} started (PID ${String(pid)})`);
 }
 
+/** Poll for process exit after SIGTERM, escalate to SIGKILL if needed. */
 function stopService(pidDir: string, name: ServiceName): void {
   const pid = readPid(pidDir, name);
-  if (pid !== null) {
-    try {
-      process.kill(pid, 0); // check alive
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          /* already dead */
-        }
-      }
-      info(`${name} stopped (PID ${String(pid)})`);
-    } catch {
-      info(`${name} was not running`);
-    }
-    removePid(pidDir, name);
-  } else {
+  if (pid === null) {
     info(`${name} was not running`);
+    return;
   }
+
+  if (!isAlive(pid)) {
+    info(`${name} was not running`);
+    removePid(pidDir, name);
+    return;
+  }
+
+  // Send SIGTERM
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // Already dead between the check and the signal
+    removePid(pidDir, name);
+    info(`${name} stopped (PID ${String(pid)})`);
+    return;
+  }
+
+  // Poll for exit (up to 3 seconds)
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline && isAlive(pid)) {
+    // Busy-wait in 100ms increments (synchronous — matches stop being sync)
+    const start = Date.now();
+    while (Date.now() - start < 100) {
+      /* spin */
+    }
+  }
+
+  // Escalate to SIGKILL if still alive
+  if (isAlive(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* already dead */
+    }
+  }
+
+  removePid(pidDir, name);
+  info(`${name} stopped (PID ${String(pid)})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -185,8 +211,9 @@ export function showStatus(opts: ServiceOptions = {}): void {
   }
   console.log("");
 
+  // Only show tunnel URL if cloudflared is actually running
   const logFile = join(pidDir, "cloudflared.log");
-  if (existsSync(logFile)) {
+  if (isRunning(pidDir, "cloudflared") && existsSync(logFile)) {
     const log = readFileSync(logFile, "utf-8");
     const match = /https:\/\/[a-z0-9-]*\.trycloudflare\.com/.exec(log);
     if (match) {
@@ -206,7 +233,8 @@ export function stopAll(opts: ServiceOptions = {}): void {
 export async function startAll(opts: ServiceOptions = {}): Promise<void> {
   const pidDir = resolvePidDir(opts);
   const dashboardPort = opts.dashboardPort ?? (Number(process.env.DASHBOARD_PORT) || 18789);
-  const repoDir = opts.repoDir ?? join(import.meta.dirname, "..", "..", "..");
+  // Compiled location: dist/lib/services.js → repo root is 2 levels up
+  const repoDir = opts.repoDir ?? join(__dirname, "..", "..");
 
   if (!process.env.NVIDIA_API_KEY) {
     console.error(`${RED}[services]${NC} NVIDIA_API_KEY required`);
@@ -214,23 +242,21 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
   }
 
   if (!process.env.TELEGRAM_BOT_TOKEN) {
-    warn("TELEGRAM_BOT_TOKEN not set \u2014 Telegram bridge will not start.");
+    warn("TELEGRAM_BOT_TOKEN not set — Telegram bridge will not start.");
     warn("Create a bot via @BotFather on Telegram and set the token.");
   }
 
   // Warn if no sandbox is ready
   try {
-    const result = await execa("openshell", ["sandbox", "list"], {
-      reject: false,
-      stdout: "pipe",
-      stderr: "pipe",
+    const output = execFileSync("openshell", ["sandbox", "list"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    const output = result.stdout + result.stderr;
     if (!output.includes("Ready")) {
       warn("No sandbox in Ready state. Telegram bridge may not work until sandbox is running.");
     }
   } catch {
-    /* openshell not installed — skip check */
+    /* openshell not installed or no ready sandbox — skip check */
   }
 
   ensurePidDir(pidDir);
@@ -250,11 +276,8 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
 
   // cloudflared tunnel
   try {
-    await execa("command", ["-v", "cloudflared"], {
-      reject: true,
-      shell: true,
-      stdout: "ignore",
-      stderr: "ignore",
+    execSync("command -v cloudflared", {
+      stdio: ["ignore", "ignore", "ignore"],
     });
     startService(pidDir, "cloudflared", "cloudflared", [
       "tunnel",
@@ -262,7 +285,7 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
       `http://localhost:${String(dashboardPort)}`,
     ]);
   } catch {
-    warn("cloudflared not found \u2014 no public URL. Install: brev-setup.sh or manually.");
+    warn("cloudflared not found — no public URL. Install: brev-setup.sh or manually.");
   }
 
   // Wait for cloudflared URL
@@ -284,15 +307,13 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
 
   // Banner
   console.log("");
-  console.log(
-    "  \u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510",
-  );
-  console.log("  \u2502  NemoClaw Services                                  \u2502");
-  console.log("  \u2502                                                     \u2502");
+  console.log("  ┌─────────────────────────────────────────────────────┐");
+  console.log("  │  NemoClaw Services                                  │");
+  console.log("  │                                                     │");
 
   let tunnelUrl = "";
   const cfLogFile = join(pidDir, "cloudflared.log");
-  if (existsSync(cfLogFile)) {
+  if (isRunning(pidDir, "cloudflared") && existsSync(cfLogFile)) {
     const log = readFileSync(cfLogFile, "utf-8");
     const match = /https:\/\/[a-z0-9-]*\.trycloudflare\.com/.exec(log);
     if (match) {
@@ -301,20 +322,18 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
   }
 
   if (tunnelUrl) {
-    console.log(`  \u2502  Public URL:  ${tunnelUrl.padEnd(40)}\u2502`);
+    console.log(`  │  Public URL:  ${tunnelUrl.padEnd(40)}│`);
   }
 
   if (isRunning(pidDir, "telegram-bridge")) {
-    console.log("  \u2502  Telegram:    bridge running                        \u2502");
+    console.log("  │  Telegram:    bridge running                        │");
   } else {
-    console.log("  \u2502  Telegram:    not started (no token)                \u2502");
+    console.log("  │  Telegram:    not started (no token)                │");
   }
 
-  console.log("  \u2502                                                     \u2502");
-  console.log("  \u2502  Run 'openshell term' to monitor egress approvals   \u2502");
-  console.log(
-    "  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518",
-  );
+  console.log("  │                                                     │");
+  console.log("  │  Run 'openshell term' to monitor egress approvals   │");
+  console.log("  └─────────────────────────────────────────────────────┘");
   console.log("");
 }
 

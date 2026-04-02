@@ -2167,7 +2167,13 @@ async function createSandbox(
         console.log(`  Sandbox '${sandboxName}' exists but messaging providers are not attached.`);
         console.log("  Recreating to ensure credentials flow through the provider pipeline.");
       } else {
-        ensureDashboardForward(sandboxName, chatUiUrl);
+        const fwdOk = ensureDashboardForward(sandboxName, chatUiUrl);
+        if (!fwdOk) {
+          console.warn("  Dashboard will not be reachable until the forward is established.");
+          console.warn(
+            `  Manual fix: openshell forward start --background ${CONTROL_UI_PORT} ${sandboxName}`,
+          );
+        }
         if (isNonInteractive()) {
           note(`  [non-interactive] Sandbox '${sandboxName}' exists and is ready — reusing it`);
         } else {
@@ -2368,7 +2374,13 @@ async function createSandbox(
   // Release any stale forward on port 18789 before claiming it for the new sandbox.
   // A previous onboard run may have left the port forwarded to a different sandbox,
   // which would silently prevent the new sandbox's dashboard from being reachable.
-  ensureDashboardForward(sandboxName, chatUiUrl);
+  const forwardOk = ensureDashboardForward(sandboxName, chatUiUrl);
+  if (!forwardOk) {
+    console.warn("  Dashboard will not be reachable until the forward is established.");
+    console.warn(
+      `  Manual fix: openshell forward start --background ${CONTROL_UI_PORT} ${sandboxName}`,
+    );
+  }
 
   // Register only after confirmed ready — prevents phantom entries
   registry.registerSandbox({
@@ -3429,13 +3441,45 @@ const { resolveDashboardForwardTarget, buildControlUiUrls } = dashboard;
 function ensureDashboardForward(sandboxName, chatUiUrl = `http://127.0.0.1:${CONTROL_UI_PORT}`) {
   const forwardTarget = resolveDashboardForwardTarget(chatUiUrl);
   runOpenshell(["forward", "stop", String(CONTROL_UI_PORT)], { ignoreError: true });
-  // Use stdio "ignore" to prevent spawnSync from waiting on inherited pipe fds.
-  // The --background flag forks a child that inherits stdout/stderr; if those are
-  // pipes, spawnSync blocks until the background process exits (never).
-  runOpenshell(["forward", "start", "--background", forwardTarget, sandboxName], {
-    ignoreError: true,
-    stdio: ["ignore", "ignore", "ignore"],
-  });
+
+  const tmpErr = path.join(os.tmpdir(), `nemoclaw-fwd-${Date.now()}.err`);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Redirect stderr to a file instead of piping — prevents spawnSync from
+    // blocking on inherited pipe fds when --background forks a child process.
+    run(
+      openshellShellCommand(["forward", "start", "--background", forwardTarget, sandboxName]) +
+        ` 2>${shellQuote(tmpErr)}`,
+      { ignoreError: true, stdio: ["ignore", "ignore", "ignore"] },
+    );
+
+    let errText = "";
+    try {
+      errText = fs.readFileSync(tmpErr, "utf8").trim();
+    } catch (_e) {
+      /* may not exist */
+    }
+    try {
+      fs.unlinkSync(tmpErr);
+    } catch (_e) {
+      /* best-effort cleanup */
+    }
+
+    // Verify the forward is actually active via openshell forward list.
+    const fwdList = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
+    if (fwdList && fwdList.includes(String(CONTROL_UI_PORT))) {
+      return true;
+    }
+
+    if (errText) {
+      console.warn(`  forward start attempt ${attempt + 1} stderr: ${errText}`);
+    }
+    if (attempt < 2) sleep(2);
+  }
+
+  console.warn(
+    `  \u26a0 Dashboard forward failed after 3 attempts \u2014 port ${CONTROL_UI_PORT} not forwarded`,
+  );
+  return false;
 }
 
 function findOpenclawJsonPath(dir) {

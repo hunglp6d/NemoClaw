@@ -1392,6 +1392,7 @@ runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
   if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.registerSandbox = () => true;
@@ -1496,6 +1497,7 @@ runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
   if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.registerSandbox = () => true;
@@ -1588,6 +1590,7 @@ runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
   if (command.includes("'provider' 'get'")) return "Provider: discord-bridge";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.registerSandbox = () => true;
@@ -1818,6 +1821,7 @@ runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
   // All messaging providers already exist in gateway
   if (command.includes("'provider' 'get'")) return "Provider: exists";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.getSandbox = () => ({ name: "my-assistant", gpuEnabled: false });
@@ -2164,6 +2168,7 @@ runner.runCapture = (command) => {
     return sandboxListCalls >= 2 ? "my-assistant Ready" : "my-assistant Pending";
   }
   if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.registerSandbox = () => true;
@@ -2271,6 +2276,7 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "my-assistant";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.getSandbox = () => ({ name: "my-assistant", gpuEnabled: false });

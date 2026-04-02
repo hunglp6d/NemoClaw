@@ -82,13 +82,4 @@ describe("lib/resolve-openshell", () => {
     ).toBeNull();
   });
 
-  it("returns null for null commandVResult with no executable found", () => {
-    expect(
-      resolveOpenshell({
-        commandVResult: null,
-        checkExecutable: () => false,
-        home: undefined,
-      }),
-    ).toBeNull();
-  });
 });

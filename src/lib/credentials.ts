@@ -312,9 +312,12 @@ export async function ensureGithubToken(): Promise<void> {
   console.log("");
 }
 
-// Expose lazy getters — these are evaluated on first access, matching
-// the Object.defineProperty pattern in the original CJS module.
+// Exported for the bin/lib shim to wire as lazy getters, and for
+// direct access from tests. Re-evaluates when HOME changes.
 export { getCredsDir as _getCredsDir, getCredsFile as _getCredsFile };
 
-// For CJS compatibility, the bin/lib shim will re-export these as
-// defineProperty getters. Direct TS consumers should use getCredsDir()/getCredsFile().
+// Direct exports for TS consumers and jsconfig type checking.
+// These are evaluated at import time but the HOME-aware cache
+// ensures they stay correct across HOME changes in tests.
+export const CREDS_DIR: string = getCredsDir();
+export const CREDS_FILE: string = getCredsFile();

@@ -2178,57 +2178,38 @@ async function createSandbox(
     console.log("  │  can send and receive messages. Tokens are stored securely   │");
     console.log("  │  and never exposed inside the sandbox.                       │");
     console.log("  │                                                              │");
-    console.log("  │  Press Enter to skip, or type a channel name to configure.   │");
+    console.log("  │  For each channel, paste the bot token or press Enter to     │");
+    console.log("  │  skip that channel.                                          │");
     console.log("  └──────────────────────────────────────────────────────────────┘");
     console.log("");
 
     const MESSAGING_CHANNELS = [
       {
-        name: "telegram",
         envKey: "TELEGRAM_BOT_TOKEN",
         label: "Telegram Bot Token",
-        help: "Create a bot via @BotFather on Telegram → copy the token",
+        help: "Create a bot via @BotFather on Telegram, then copy the token.",
       },
       {
-        name: "discord",
         envKey: "DISCORD_BOT_TOKEN",
         label: "Discord Bot Token",
-        help: "Discord Developer Portal → Applications → Bot → Copy token",
+        help: "Discord Developer Portal → Applications → Bot → Copy token.",
       },
       {
-        name: "slack",
         envKey: "SLACK_BOT_TOKEN",
         label: "Slack Bot Token",
-        help: "Slack API → Your Apps → OAuth & Permissions → Bot User OAuth Token (xoxb-...)",
+        help: "Slack API → Your Apps → OAuth & Permissions → Bot User OAuth Token (xoxb-...).",
       },
     ];
 
-    const channelAnswer = (
-      await prompt("  Connect a channel? (telegram / discord / slack / skip) [skip]: ")
-    )
-      .trim()
-      .toLowerCase();
-
-    if (channelAnswer && channelAnswer !== "skip") {
-      const channels = channelAnswer.split(/[,\s]+/).filter(Boolean);
-      for (const ch of channels) {
-        const def = MESSAGING_CHANNELS.find((c) => c.name === ch);
-        if (!def) {
-          console.log(`  Unknown channel: ${ch} (available: telegram, discord, slack)`);
-          continue;
-        }
-        console.log("");
-        console.log(`  ${def.help}`);
-        const token = normalizeCredentialValue(
-          await prompt(`  ${def.label}: `, { secret: true }),
-        );
-        if (token) {
-          saveCredential(def.envKey, token);
-          process.env[def.envKey] = token;
-          console.log(`  ✓ ${def.name} token saved`);
-        } else {
-          console.log(`  Skipped ${def.name}`);
-        }
+    for (const def of MESSAGING_CHANNELS) {
+      console.log(`  ${def.help}`);
+      const token = normalizeCredentialValue(
+        await prompt(`  ${def.label} (Enter to skip): `, { secret: true }),
+      );
+      if (token) {
+        saveCredential(def.envKey, token);
+        process.env[def.envKey] = token;
+        console.log(`  ✓ Saved`);
       }
       console.log("");
     }

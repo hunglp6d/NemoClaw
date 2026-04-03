@@ -326,6 +326,7 @@ spin() {
   log=$(mktemp)
   "$@" >"$log" 2>&1 &
   local pid=$! i=0
+  local status
   local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 
   # Register with global cleanup so any exit path reaps the child and temp file.
@@ -344,9 +345,9 @@ spin() {
   trap - INT TERM
 
   if wait "$pid"; then
-    local status=0
+    status=0
   else
-    local status=$?
+    status=$?
   fi
 
   if [[ $status -eq 0 ]]; then

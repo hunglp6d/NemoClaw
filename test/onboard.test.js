@@ -1211,7 +1211,7 @@ const { setupInference } = require(${onboardPath});
 
     assert.match(source, /const ONBOARD_STEP_INDEX = \{/);
     assert.match(source, /function skippedStepMessage\(stepName, detail, reason = "resume"\)/);
-    assert.match(source, /step\(stepInfo\.number, 7, stepInfo\.title\);/);
+    assert.match(source, /step\(stepInfo\.number, 8, stepInfo\.title\);/);
     assert.match(source, /skippedStepMessage\("openclaw", sandboxName\)/);
     assert.match(
       source,

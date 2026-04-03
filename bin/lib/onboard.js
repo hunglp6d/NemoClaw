@@ -1781,7 +1781,7 @@ function getNonInteractiveModel(providerKey) {
 
 // eslint-disable-next-line complexity
 async function preflight() {
-  step(1, 7, "Preflight checks");
+  step(1, 8, "Preflight checks");
 
   // Docker
   if (!isDockerRunning()) {
@@ -1951,7 +1951,7 @@ async function preflight() {
 // ── Step 2: Gateway ──────────────────────────────────────────────
 
 async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
-  step(2, 7, "Starting OpenShell gateway");
+  step(2, 8, "Starting OpenShell gateway");
 
   const gatewayStatus = runCaptureOpenshell(["status"], { ignoreError: true });
   const gwInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], {
@@ -2149,7 +2149,7 @@ async function createSandbox(
   preferredInferenceApi = null,
   sandboxNameOverride = null,
 ) {
-  step(5, 7, "Creating sandbox");
+  step(5, 8, "Creating sandbox");
 
   const sandboxName = sandboxNameOverride || (await promptValidatedSandboxName());
   const chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`;
@@ -2159,61 +2159,6 @@ async function createSandbox(
   // without provider attachments (security: prevents legacy raw-env-var leaks).
   const getMessagingToken = (envKey) =>
     getCredential(envKey) || normalizeCredentialValue(process.env[envKey]) || null;
-
-  // Offer to configure messaging channels if none are set and we're interactive.
-  // Check the env var directly as well — NON_INTERACTIVE is only set inside
-  // onboard(), but createSandbox() can be called directly by tests or scripts.
-  if (
-    !isNonInteractive() &&
-    process.env.NEMOCLAW_NON_INTERACTIVE !== "1" &&
-    !getMessagingToken("TELEGRAM_BOT_TOKEN") &&
-    !getMessagingToken("DISCORD_BOT_TOKEN") &&
-    !getMessagingToken("SLACK_BOT_TOKEN")
-  ) {
-    console.log("");
-    console.log("  Messaging channels (optional):");
-    console.log("  Connect Telegram, Discord, or Slack so your assistant can");
-    console.log("  send and receive messages. Tokens are stored securely and");
-    console.log("  never exposed inside the sandbox.");
-    console.log("  Press Enter to skip any channel you don't need.");
-    console.log("");
-
-    // Telegram
-    console.log("  Telegram: Create a bot via @BotFather on Telegram, then copy the token.");
-    const tgInput = normalizeCredentialValue(
-      await prompt("  Telegram Bot Token (Enter to skip): ", { secret: true }),
-    );
-    if (tgInput) {
-      saveCredential("TELEGRAM_BOT_TOKEN", tgInput);
-      process.env.TELEGRAM_BOT_TOKEN = tgInput;
-      console.log("  ✓ Telegram token saved");
-    }
-    console.log("");
-
-    // Discord
-    console.log("  Discord: Developer Portal → Applications → Bot → Reset/Copy Token.");
-    const dcInput = normalizeCredentialValue(
-      await prompt("  Discord Bot Token (Enter to skip): ", { secret: true }),
-    );
-    if (dcInput) {
-      saveCredential("DISCORD_BOT_TOKEN", dcInput);
-      process.env.DISCORD_BOT_TOKEN = dcInput;
-      console.log("  ✓ Discord token saved");
-    }
-    console.log("");
-
-    // Slack
-    console.log("  Slack: api.slack.com → Your Apps → OAuth & Permissions → Bot User OAuth Token.");
-    const slInput = normalizeCredentialValue(
-      await prompt("  Slack Bot Token (Enter to skip): ", { secret: true }),
-    );
-    if (slInput) {
-      saveCredential("SLACK_BOT_TOKEN", slInput);
-      process.env.SLACK_BOT_TOKEN = slInput;
-      console.log("  ✓ Slack token saved");
-    }
-    console.log("");
-  }
 
   const messagingTokenDefs = [
     {
@@ -2467,7 +2412,7 @@ async function createSandbox(
 
 // eslint-disable-next-line complexity
 async function setupNim(gpu) {
-  step(3, 7, "Configuring inference (NIM)");
+  step(3, 8, "Configuring inference (NIM)");
 
   let model = null;
   let provider = REMOTE_PROVIDER_CONFIG.build.providerName;
@@ -3035,7 +2980,7 @@ async function setupInference(
   endpointUrl = null,
   credentialEnv = null,
 ) {
-  step(4, 7, "Setting up inference provider");
+  step(4, 8, "Setting up inference provider");
   runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
 
   if (
@@ -3169,10 +3114,86 @@ async function setupInference(
   return { ok: true };
 }
 
-// ── Step 6: OpenClaw ─────────────────────────────────────────────
+// ── Step 6: Messaging channels ───────────────────────────────────
+
+async function setupMessagingChannels() {
+  step(6, 8, "Messaging channels");
+
+  const getMessagingToken = (envKey) =>
+    getCredential(envKey) || normalizeCredentialValue(process.env[envKey]) || null;
+
+  // Skip if tokens are already configured or we're non-interactive
+  if (
+    isNonInteractive() ||
+    process.env.NEMOCLAW_NON_INTERACTIVE === "1" ||
+    getMessagingToken("TELEGRAM_BOT_TOKEN") ||
+    getMessagingToken("DISCORD_BOT_TOKEN") ||
+    getMessagingToken("SLACK_BOT_TOKEN")
+  ) {
+    if (
+      getMessagingToken("TELEGRAM_BOT_TOKEN") ||
+      getMessagingToken("DISCORD_BOT_TOKEN") ||
+      getMessagingToken("SLACK_BOT_TOKEN")
+    ) {
+      const found = [
+        getMessagingToken("TELEGRAM_BOT_TOKEN") && "telegram",
+        getMessagingToken("DISCORD_BOT_TOKEN") && "discord",
+        getMessagingToken("SLACK_BOT_TOKEN") && "slack",
+      ].filter(Boolean);
+      console.log(`  Messaging tokens already configured: ${found.join(", ")}`);
+    } else {
+      note("  No messaging tokens configured. Skipping.");
+    }
+    return;
+  }
+
+  console.log("  Connect Telegram, Discord, or Slack so your assistant can");
+  console.log("  send and receive messages. Tokens are stored securely and");
+  console.log("  never exposed inside the sandbox.");
+  console.log("  Press Enter to skip any channel you don't need.");
+  console.log("");
+
+  // Telegram
+  console.log("  Telegram: Create a bot via @BotFather on Telegram, then copy the token.");
+  const tgInput = normalizeCredentialValue(
+    await prompt("  Telegram Bot Token (Enter to skip): ", { secret: true }),
+  );
+  if (tgInput) {
+    saveCredential("TELEGRAM_BOT_TOKEN", tgInput);
+    process.env.TELEGRAM_BOT_TOKEN = tgInput;
+    console.log("  ✓ Telegram token saved");
+  }
+  console.log("");
+
+  // Discord
+  console.log("  Discord: Developer Portal → Applications → Bot → Reset/Copy Token.");
+  const dcInput = normalizeCredentialValue(
+    await prompt("  Discord Bot Token (Enter to skip): ", { secret: true }),
+  );
+  if (dcInput) {
+    saveCredential("DISCORD_BOT_TOKEN", dcInput);
+    process.env.DISCORD_BOT_TOKEN = dcInput;
+    console.log("  ✓ Discord token saved");
+  }
+  console.log("");
+
+  // Slack
+  console.log("  Slack: api.slack.com → Your Apps → OAuth & Permissions → Bot User OAuth Token.");
+  const slInput = normalizeCredentialValue(
+    await prompt("  Slack Bot Token (Enter to skip): ", { secret: true }),
+  );
+  if (slInput) {
+    saveCredential("SLACK_BOT_TOKEN", slInput);
+    process.env.SLACK_BOT_TOKEN = slInput;
+    console.log("  ✓ Slack token saved");
+  }
+  console.log("");
+}
+
+// ── Step 7: OpenClaw ─────────────────────────────────────────────
 
 async function setupOpenclaw(sandboxName, model, provider) {
-  step(6, 7, "Setting up OpenClaw inside sandbox");
+  step(7, 8, "Setting up OpenClaw inside sandbox");
 
   const selectionConfig = getProviderSelectionConfig(provider, model);
   if (selectionConfig) {
@@ -3199,7 +3220,7 @@ async function setupOpenclaw(sandboxName, model, provider) {
 
 // eslint-disable-next-line complexity
 async function _setupPolicies(sandboxName) {
-  step(7, 7, "Policy presets");
+  step(8, 8, "Policy presets");
 
   const suggestions = ["pypi", "npm"];
 
@@ -3351,7 +3372,7 @@ async function setupPoliciesWithSelection(sandboxName, options = {}) {
   const selectedPresets = Array.isArray(options.selectedPresets) ? options.selectedPresets : null;
   const onSelection = typeof options.onSelection === "function" ? options.onSelection : null;
 
-  step(7, 7, "Policy presets");
+  step(8, 8, "Policy presets");
 
   const suggestions = ["pypi", "npm"];
   if (getCredential("TELEGRAM_BOT_TOKEN")) suggestions.push("telegram");
@@ -3627,14 +3648,15 @@ const ONBOARD_STEP_INDEX = {
   provider_selection: { number: 3, title: "Configuring inference (NIM)" },
   inference: { number: 4, title: "Setting up inference provider" },
   sandbox: { number: 5, title: "Creating sandbox" },
-  openclaw: { number: 6, title: "Setting up OpenClaw inside sandbox" },
-  policies: { number: 7, title: "Policy presets" },
+  messaging: { number: 6, title: "Messaging channels" },
+  openclaw: { number: 7, title: "Setting up OpenClaw inside sandbox" },
+  policies: { number: 8, title: "Policy presets" },
 };
 
 function skippedStepMessage(stepName, detail, reason = "resume") {
   const stepInfo = ONBOARD_STEP_INDEX[stepName];
   if (stepInfo) {
-    step(stepInfo.number, 7, stepInfo.title);
+    step(stepInfo.number, 8, stepInfo.title);
   }
   const prefix = reason === "reuse" ? "[reuse]" : "[resume]";
   console.log(`  ${prefix} Skipping ${stepName}${detail ? ` (${detail})` : ""}`);
@@ -3884,6 +3906,8 @@ async function onboard(opts = {}) {
       sandboxName = await createSandbox(gpu, model, provider, preferredInferenceApi, sandboxName);
       onboardSession.markStepComplete("sandbox", { sandboxName, provider, model, nimContainer });
     }
+
+    await setupMessagingChannels();
 
     const resumeOpenclaw = resume && sandboxName && isOpenclawReady(sandboxName);
     if (resumeOpenclaw) {

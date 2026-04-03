@@ -10,8 +10,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-LOCAL_PAYLOAD="${SCRIPT_DIR}/scripts/install/installer.sh"
+LOCAL_PAYLOAD="${SCRIPT_DIR}/scripts/install.sh"
 BOOTSTRAP_TMPDIR=""
+PAYLOAD_MARKER="NEMOCLAW_VERSIONED_INSTALLER_PAYLOAD=1"
 
 resolve_release_tag() {
   printf "%s" "${NEMOCLAW_INSTALL_TAG:-latest}"
@@ -29,6 +30,11 @@ verify_downloaded_script() {
   fi
 }
 
+has_payload_marker() {
+  local file="$1"
+  [[ -f "$file" ]] && grep -q "$PAYLOAD_MARKER" "$file"
+}
+
 exec_installer_from_ref() {
   local ref="$1"
   shift
@@ -41,10 +47,10 @@ exec_installer_from_ref() {
 
   git clone --depth 1 --branch "$ref" https://github.com/NVIDIA/NemoClaw.git "$source_root"
 
-  payload_script="${source_root}/scripts/install/installer.sh"
+  payload_script="${source_root}/scripts/install.sh"
   legacy_script="${source_root}/install.sh"
 
-  if [[ -f "$payload_script" ]]; then
+  if has_payload_marker "$payload_script"; then
     verify_downloaded_script "$payload_script" "versioned installer"
     NEMOCLAW_INSTALL_REF="$ref" NEMOCLAW_INSTALL_TAG="$ref" NEMOCLAW_REPO_ROOT="$source_root" \
       bash "$payload_script" "$@"
@@ -99,13 +105,13 @@ bootstrap_main() {
   exec_installer_from_ref "$ref" "$@"
 }
 
-if [[ -f "$LOCAL_PAYLOAD" ]]; then
+if has_payload_marker "$LOCAL_PAYLOAD"; then
   # shellcheck source=/dev/null
   . "$LOCAL_PAYLOAD"
 fi
 
 if [[ "${BASH_SOURCE[0]:-}" == "$0" ]] || { [[ -z "${BASH_SOURCE[0]:-}" ]] && { [[ "$0" == "bash" ]] || [[ "$0" == "-bash" ]]; }; }; then
-  if [[ -f "$LOCAL_PAYLOAD" ]]; then
+  if has_payload_marker "$LOCAL_PAYLOAD"; then
     main "$@"
   else
     bootstrap_main "$@"

@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 
 const INSTALLER = path.join(import.meta.dirname, "..", "install.sh");
 const CURL_PIPE_INSTALLER = path.join(import.meta.dirname, "..", "install.sh");
-const LEGACY_INSTALLER_WRAPPER = path.join(import.meta.dirname, "..", "scripts", "install.sh");
+const INSTALLER_PAYLOAD = path.join(import.meta.dirname, "..", "scripts", "install.sh");
 const GITHUB_INSTALL_URL = "git+https://github.com/NVIDIA/NemoClaw.git";
 const TEST_SYSTEM_PATH = "/usr/bin:/bin";
 
@@ -296,23 +296,22 @@ exit 98
     expect(output).not.toMatch(/npm install -g nemoclaw/);
   });
 
-  it("legacy scripts/install.sh delegates to the root installer from a repo checkout", () => {
-    const result = spawnSync("bash", [LEGACY_INSTALLER_WRAPPER, "--help"], {
+  it("scripts/install.sh runs as the installer from a repo checkout", () => {
+    const result = spawnSync("bash", [INSTALLER_PAYLOAD, "--help"], {
       cwd: path.join(import.meta.dirname, ".."),
       encoding: "utf-8",
     });
 
     const output = `${result.stdout}${result.stderr}`;
     expect(result.status).toBe(0);
-    expect(output).toMatch(/deprecated compatibility wrapper/);
-    expect(output).toMatch(/https:\/\/www\.nvidia\.com\/nemoclaw\.sh/);
     expect(output).toMatch(/NemoClaw Installer/);
+    expect(output).not.toMatch(/deprecated compatibility wrapper/);
   });
 
-  it("legacy scripts/install.sh fails clearly when run without the repo root installer", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-legacy-installer-stdin-"));
-    const scriptContents = fs.readFileSync(LEGACY_INSTALLER_WRAPPER, "utf-8");
-    const result = spawnSync("bash", [], {
+  it("scripts/install.sh --help works when run directly outside a repo checkout", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-installer-payload-stdin-"));
+    const scriptContents = fs.readFileSync(INSTALLER_PAYLOAD, "utf-8");
+    const result = spawnSync("bash", ["-s", "--", "--help"], {
       cwd: tmp,
       input: scriptContents,
       encoding: "utf-8",
@@ -324,11 +323,9 @@ exit 98
     });
 
     const output = `${result.stdout}${result.stderr}`;
-    expect(result.status).not.toBe(0);
-    expect(output).toMatch(/deprecated compatibility wrapper/);
-    expect(output).toMatch(/supported installer/);
-    expect(output).toMatch(/https:\/\/www\.nvidia\.com\/nemoclaw\.sh/);
-    expect(output).toMatch(/only works from a NemoClaw repository checkout/);
+    expect(result.status).toBe(0);
+    expect(output).toMatch(/NemoClaw Installer/);
+    expect(output).not.toMatch(/deprecated compatibility wrapper/);
   });
 
   it("--help exits 0 and shows install usage", () => {
@@ -1675,7 +1672,7 @@ exit 0`,
     expect(`${result.stdout}${result.stderr}`).not.toMatch(/curl should not hit the releases API/);
   });
 
-  it("falls back to the legacy root installer when the selected ref predates the versioned payload", () => {
+  it("falls back to the legacy root installer when the selected ref only has the old scripts/install.sh wrapper", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-curl-pipe-legacy-ref-"));
     const legacyLog = path.join(tmp, "legacy.log");
     const { fakeBin, prefix } = buildCurlPipeEnv(tmp, {
@@ -1684,7 +1681,14 @@ exit 0`,
       gitStub: `#!/usr/bin/env bash
 if [ "$1" = "clone" ]; then
   target="\${@: -1}"
-  mkdir -p "$target"
+  mkdir -p "$target/scripts"
+  cat > "$target/scripts/install.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+echo legacy-wrapper >&2
+exit 97
+EOS
+  chmod +x "$target/scripts/install.sh"
   cat > "$target/install.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1725,7 +1729,7 @@ exit 0`,
       gitStub: `#!/usr/bin/env bash
 if [ "$1" = "clone" ]; then
   target="\${@: -1}"
-  mkdir -p "$target/nemoclaw" "$target/bin/lib" "$target/scripts/install"
+  mkdir -p "$target/nemoclaw" "$target/bin/lib" "$target/scripts"
   echo '{"name":"nemoclaw","version":"0.5.0","dependencies":{"openclaw":"2026.3.11"}}' > "$target/package.json"
   echo '{"name":"nemoclaw-plugin","version":"0.5.0"}' > "$target/nemoclaw/package.json"
   cat > "$target/bin/lib/usage-notice.js" <<'EOS'
@@ -1733,12 +1737,13 @@ if [ "$1" = "clone" ]; then
 process.exit(0)
 EOS
   chmod +x "$target/bin/lib/usage-notice.js"
-  cat > "$target/scripts/install/installer.sh" <<'EOS'
+  cat > "$target/scripts/install.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
+# NEMOCLAW_VERSIONED_INSTALLER_PAYLOAD=1
 node "$NEMOCLAW_REPO_ROOT/bin/lib/usage-notice.js"
 EOS
-  chmod +x "$target/scripts/install/installer.sh"
+  chmod +x "$target/scripts/install.sh"
   exit 0
 fi
 exit 0`,

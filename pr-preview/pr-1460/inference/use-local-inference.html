@@ -457,6 +457,18 @@ On macOS, the wizard also offers to install Ollama through Homebrew if it is not
 <p>Select <strong>Local Ollama</strong> from the provider list.
 NemoClaw lists installed models or offers starter models if none are installed.
 It pulls the selected model, loads it into memory, and validates it before continuing.</p>
+<section id="linux-with-docker">
+<h3>Linux with Docker<a class="headerlink" href="#linux-with-docker" title="Link to this heading">#</a></h3>
+<p>On Linux hosts that run NemoClaw with Docker, the sandbox reaches Ollama through
+<code class="docutils literal notranslate"><span class="pre">http://host.openshell.internal:11434</span></code>, not the host shell’s <code class="docutils literal notranslate"><span class="pre">localhost</span></code> socket.
+If Ollama is already running, make sure it listens on <code class="docutils literal notranslate"><span class="pre">0.0.0.0:11434</span></code> instead of
+<code class="docutils literal notranslate"><span class="pre">127.0.0.1:11434</span></code>.</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">OLLAMA_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0:11434<span class="w"> </span>ollama<span class="w"> </span>serve
+</pre></div>
+</div>
+<p>If Ollama only binds loopback, NemoClaw can detect it on the host, but the
+sandbox-side validation step fails because containers cannot reach it.</p>
+</section>
 <section id="non-interactive-setup">
 <h3>Non-Interactive Setup<a class="headerlink" href="#non-interactive-setup" title="Link to this heading">#</a></h3>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_PROVIDER</span><span class="o">=</span>ollama<span class="w"> </span><span class="se">\</span>
@@ -677,6 +689,7 @@ Refer to <a class="reference internal" href="switch-inference-providers.html"><s
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prerequisites">Prerequisites</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ollama">Ollama</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#linux-with-docker">Linux with Docker</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#non-interactive-setup">Non-Interactive Setup</a></li>
 </ul>
 </li>

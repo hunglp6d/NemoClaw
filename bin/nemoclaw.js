@@ -253,6 +253,9 @@ function recoverSandboxProcesses(sandboxName) {
   const script = [
     // Source proxy config (written to .bashrc by nemoclaw-start on first boot)
     "[ -f ~/.bashrc ] && . ~/.bashrc 2>/dev/null;",
+    // Re-check liveness before touching anything — another caller may have
+    // already recovered the gateway between our initial check and now (TOCTOU).
+    "if curl -sf --max-time 3 http://127.0.0.1:18789/ > /dev/null 2>&1; then echo ALREADY_RUNNING; exit 0; fi;",
     // Clean stale lock files from the previous run (gateway checks these)
     "rm -rf /tmp/openclaw-*/gateway.*.lock 2>/dev/null;",
     // Clean stale temp files from the previous run
@@ -270,7 +273,10 @@ function recoverSandboxProcesses(sandboxName) {
 
   const result = executeSandboxCommand(sandboxName, script);
   if (!result) return false;
-  return result.status === 0 && result.stdout.includes("GATEWAY_PID=");
+  return (
+    result.status === 0 &&
+    (result.stdout.includes("GATEWAY_PID=") || result.stdout.includes("ALREADY_RUNNING"))
+  );
 }
 
 /**
@@ -306,8 +312,16 @@ function checkAndRecoverSandboxProcesses(sandboxName, { quiet = false } = {}) {
 
   const recovered = recoverSandboxProcesses(sandboxName);
   if (recovered) {
-    // Brief pause for gateway to initialize before establishing forward
+    // Wait for gateway to bind its HTTP port before declaring success
     spawnSync("sleep", ["3"]);
+    if (isSandboxGatewayRunning(sandboxName) !== true) {
+      // Gateway process started but HTTP endpoint never came up
+      if (!quiet) {
+        console.error("  Gateway process started but is not responding.");
+        console.error("  Check /tmp/gateway.log inside the sandbox for details.");
+      }
+      return { checked: true, wasRunning: false, recovered: false };
+    }
     ensureSandboxPortForward(sandboxName);
     if (!quiet) {
       console.log(`  ${G}✓${R} OpenClaw gateway restarted inside sandbox.`);

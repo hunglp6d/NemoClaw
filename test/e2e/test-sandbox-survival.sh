@@ -30,7 +30,11 @@ set -uo pipefail
 if [ -z "${NEMOCLAW_E2E_NO_TIMEOUT:-}" ]; then
   export NEMOCLAW_E2E_NO_TIMEOUT=1
   TIMEOUT_SECONDS="${NEMOCLAW_E2E_TIMEOUT_SECONDS:-900}"
-  exec timeout -s TERM "$TIMEOUT_SECONDS" "$0" "$@"
+  if command -v timeout >/dev/null 2>&1; then
+    exec timeout -s TERM "$TIMEOUT_SECONDS" bash "$0" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    exec gtimeout -s TERM "$TIMEOUT_SECONDS" bash "$0" "$@"
+  fi
 fi
 
 PASS=0
@@ -93,7 +97,12 @@ run_nemoclaw() { "${NEMOCLAW_CMD[@]}" "$@"; }
 
 registry_has() {
   local name="$1"
-  [ -f "$REGISTRY" ] && grep -q "$name" "$REGISTRY"
+  [ -f "$REGISTRY" ] && python3 - "$REGISTRY" "$name" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as fh:
+    sandboxes = json.load(fh).get("sandboxes", [])
+sys.exit(0 if any(sb.get("name") == sys.argv[2] for sb in sandboxes) else 1)
+PY
 }
 
 # Compare semver: returns 0 if $1 >= $2
@@ -305,11 +314,13 @@ else
   info "Gateway start returned non-zero — checking health..."
 fi
 
-# Wait for gateway to become healthy
+# Wait for gateway to become healthy — verify both "Connected" status and
+# active gateway is "nemoclaw" (matches production health predicate).
 info "Waiting for gateway to become healthy..."
 HEALTHY=0
 for attempt in $(seq 1 60); do
-  if openshell status 2>&1 | grep -qiE "healthy|running|connected|✓"; then
+  gw_status=$(openshell status 2>&1)
+  if echo "$gw_status" | grep -qi "Connected" && echo "$gw_status" | grep -qi "nemoclaw"; then
     HEALTHY=1
     break
   fi

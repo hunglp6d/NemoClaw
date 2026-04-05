@@ -37,6 +37,7 @@
 #   NEMOCLAW_SANDBOX_NAME                  — sandbox name (default: e2e-msg-provider)
 #   TELEGRAM_BOT_TOKEN                     — defaults to fake token
 #   DISCORD_BOT_TOKEN                      — defaults to fake token
+#   TELEGRAM_ALLOWED_IDS                   — comma-separated Telegram user IDs for DM allowlisting
 #   TELEGRAM_BOT_TOKEN_REAL                — optional: enables Phase 6 real round-trip
 #   DISCORD_BOT_TOKEN_REAL                 — optional: enables Phase 6 real round-trip
 #   TELEGRAM_CHAT_ID_E2E                   — optional: enables sendMessage test
@@ -90,8 +91,10 @@ SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-e2e-msg-provider}"
 # Default to fake tokens if not provided
 TELEGRAM_TOKEN="${TELEGRAM_BOT_TOKEN:-test-fake-telegram-token-e2e}"
 DISCORD_TOKEN="${DISCORD_BOT_TOKEN:-test-fake-discord-token-e2e}"
+TELEGRAM_IDS="${TELEGRAM_ALLOWED_IDS:-123456789}"
 export TELEGRAM_BOT_TOKEN="$TELEGRAM_TOKEN"
 export DISCORD_BOT_TOKEN="$DISCORD_TOKEN"
+export TELEGRAM_ALLOWED_IDS="$TELEGRAM_IDS"
 
 # Run a command inside the sandbox and capture output
 sandbox_exec() {
@@ -363,6 +366,48 @@ print(d.get('discord', {}).get('accounts', {}).get('main', {}).get('enabled', Fa
     pass "M11: Discord channel is enabled"
   else
     skip "M11: Discord channel not enabled (expected in non-root sandbox)"
+  fi
+
+  # M11b: Telegram dmPolicy is allowlist (not pairing)
+  tg_dm_policy=$(echo "$channel_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(d.get('telegram', {}).get('accounts', {}).get('main', {}).get('dmPolicy', ''))
+" 2>/dev/null || true)
+
+  if [ "$tg_dm_policy" = "allowlist" ]; then
+    pass "M11b: Telegram dmPolicy is 'allowlist'"
+  elif [ -n "$tg_dm_policy" ]; then
+    fail "M11b: Telegram dmPolicy is '$tg_dm_policy' (expected 'allowlist')"
+  else
+    skip "M11b: Telegram dmPolicy not set (channel may not be configured)"
+  fi
+
+  # M11c: Telegram allowFrom contains the expected user IDs
+  tg_allow_from=$(echo "$channel_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+ids = d.get('telegram', {}).get('accounts', {}).get('main', {}).get('allowFrom', [])
+print(','.join(str(i) for i in ids))
+" 2>/dev/null || true)
+
+  if [ -n "$tg_allow_from" ]; then
+    # Check that at least one of the configured IDs is present
+    IFS=',' read -ra expected_ids <<<"$TELEGRAM_IDS"
+    found_match=false
+    for eid in "${expected_ids[@]}"; do
+      if echo "$tg_allow_from" | grep -qF "$eid"; then
+        found_match=true
+        break
+      fi
+    done
+    if [ "$found_match" = "true" ]; then
+      pass "M11c: Telegram allowFrom contains expected user ID(s): $tg_allow_from"
+    else
+      fail "M11c: Telegram allowFrom ($tg_allow_from) does not contain any expected ID ($TELEGRAM_IDS)"
+    fi
+  else
+    skip "M11c: Telegram allowFrom not set (channel may not be configured)"
   fi
 fi
 

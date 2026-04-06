@@ -14,7 +14,9 @@ async function importCredentialsModule(home) {
   vi.doUnmock("readline");
   vi.stubEnv("HOME", home);
   const module = await import("../bin/lib/credentials.js");
-  return module.default ?? module;
+  /** @type {any} */
+  const resolved = module.default ?? module;
+  return resolved;
 }
 
 afterEach(() => {

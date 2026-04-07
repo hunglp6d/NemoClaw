@@ -50,6 +50,8 @@ export interface Session {
   failure: SessionFailure | null;
   sandboxName: string | null;
   provider: string | null;
+  ncpPartner: string | null;
+  ncpEndpointMode: string | null;
   model: string | null;
   endpointUrl: string | null;
   credentialEnv: string | null;
@@ -79,6 +81,8 @@ export interface LockResult {
 export interface SessionUpdates {
   sandboxName?: string;
   provider?: string;
+  ncpPartner?: string;
+  ncpEndpointMode?: string;
   model?: string;
   endpointUrl?: string;
   credentialEnv?: string;
@@ -187,6 +191,8 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     failure: overrides.failure || null,
     sandboxName: overrides.sandboxName || null,
     provider: overrides.provider || null,
+    ncpPartner: overrides.ncpPartner || null,
+    ncpEndpointMode: overrides.ncpEndpointMode || null,
     model: overrides.model || null,
     endpointUrl: overrides.endpointUrl || null,
     credentialEnv: overrides.credentialEnv || null,
@@ -220,6 +226,8 @@ export function normalizeSession(data: unknown): Session | null {
     updatedAt: typeof d.updatedAt === "string" ? d.updatedAt : undefined,
     sandboxName: typeof d.sandboxName === "string" ? d.sandboxName : null,
     provider: typeof d.provider === "string" ? d.provider : null,
+    ncpPartner: typeof d.ncpPartner === "string" ? d.ncpPartner : null,
+    ncpEndpointMode: typeof d.ncpEndpointMode === "string" ? d.ncpEndpointMode : null,
     model: typeof d.model === "string" ? d.model : null,
     endpointUrl: typeof d.endpointUrl === "string" ? redactUrl(d.endpointUrl) : null,
     credentialEnv: typeof d.credentialEnv === "string" ? d.credentialEnv : null,
@@ -232,7 +240,7 @@ export function normalizeSession(data: unknown): Session | null {
         ? { fetchEnabled: true }
         : null,
     policyPresets: Array.isArray(d.policyPresets)
-      ? (d.policyPresets as unknown[]).filter((value) => typeof value === "string") as string[]
+      ? ((d.policyPresets as unknown[]).filter((value) => typeof value === "string") as string[])
       : null,
     lastStepStarted: typeof d.lastStepStarted === "string" ? d.lastStepStarted : null,
     lastCompletedStep: typeof d.lastCompletedStep === "string" ? d.lastCompletedStep : null,
@@ -246,10 +254,7 @@ export function normalizeSession(data: unknown): Session | null {
 
   if (isObject(d.steps)) {
     for (const [name, step] of Object.entries(d.steps as Record<string, unknown>)) {
-      if (
-        Object.prototype.hasOwnProperty.call(normalized.steps, name) &&
-        validateStep(step)
-      ) {
+      if (Object.prototype.hasOwnProperty.call(normalized.steps, name) && validateStep(step)) {
         const s = step as Record<string, unknown>;
         normalized.steps[name] = {
           status: s.status as string,
@@ -407,6 +412,8 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
   if (!isObject(updates)) return safe;
   if (typeof updates.sandboxName === "string") safe.sandboxName = updates.sandboxName;
   if (typeof updates.provider === "string") safe.provider = updates.provider;
+  if (typeof updates.ncpPartner === "string") safe.ncpPartner = updates.ncpPartner;
+  if (typeof updates.ncpEndpointMode === "string") safe.ncpEndpointMode = updates.ncpEndpointMode;
   if (typeof updates.model === "string") safe.model = updates.model;
   if (typeof updates.endpointUrl === "string") safe.endpointUrl = redactUrl(updates.endpointUrl);
   if (typeof updates.credentialEnv === "string") safe.credentialEnv = updates.credentialEnv;
@@ -491,10 +498,9 @@ export function completeSession(updates: SessionUpdates = {}): Session {
   });
 }
 
-export function summarizeForDebug(session: Session | null = loadSession()): Record<
-  string,
-  unknown
-> | null {
+export function summarizeForDebug(
+  session: Session | null = loadSession(),
+): Record<string, unknown> | null {
   if (!session) return null;
   return {
     version: session.version,
@@ -506,6 +512,8 @@ export function summarizeForDebug(session: Session | null = loadSession()): Reco
     updatedAt: session.updatedAt,
     sandboxName: session.sandboxName,
     provider: session.provider,
+    ncpPartner: session.ncpPartner,
+    ncpEndpointMode: session.ncpEndpointMode,
     model: session.model,
     endpointUrl: redactUrl(session.endpointUrl),
     credentialEnv: session.credentialEnv,

@@ -482,7 +482,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-    const answers = ["6", "7", "gemini-custom"];
+    const answers = ["7", "7", "gemini-custom"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -535,6 +535,175 @@ const { setupNim } = require(${onboardPath});
     assert.ok(payload.lines.some((line) => line.includes("Chat Completions API available")));
   });
 
+  it("supports nested NVIDIA Partner endpoint partner and mode prompts", () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-ncp-selection-"));
+    const fakeBin = path.join(tmpDir, "bin");
+    const scriptPath = path.join(tmpDir, "ncp-selection-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
+    const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
+
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(
+      path.join(fakeBin, "curl"),
+      `#!/usr/bin/env bash
+body='{"id":"resp_123"}'
+status="200"
+outfile=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) outfile="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s' "$body" > "$outfile"
+printf '%s' "$status"
+`,
+      { mode: 0o755 },
+    );
+
+    const script = String.raw`
+const credentials = require(${credentialsPath});
+const runner = require(${runnerPath});
+
+const answers = ["2", "4", "deepinfra/meta-llama-3.1-8b-instruct"];
+const messages = [];
+
+credentials.prompt = async (message) => {
+  messages.push(message);
+  return answers.shift() || "";
+};
+runner.runCapture = () => "";
+
+const { setupNim } = require(${onboardPath});
+
+(async () => {
+  process.env.DEEPINFRA_API_KEY = "deepinfra-secret";
+  const originalLog = console.log;
+  const lines = [];
+  console.log = (...args) => lines.push(args.join(" "));
+  try {
+    const result = await setupNim(null);
+    originalLog(JSON.stringify({ result, messages, lines }));
+  } finally {
+    console.log = originalLog;
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${fakeBin}:${process.env.PATH || ""}`,
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout.trim());
+    assert.equal(payload.result.provider, "nvidia-ncp");
+    assert.equal(payload.result.ncpPartner, "deepinfra");
+    assert.equal(payload.result.ncpEndpointMode, "serverless");
+    assert.equal(payload.result.model, "deepinfra/meta-llama-3.1-8b-instruct");
+    assert.equal(payload.result.endpointUrl, "https://api.deepinfra.com/v1/openai");
+    assert.equal(payload.result.credentialEnv, "DEEPINFRA_API_KEY");
+    assert.equal(payload.result.preferredInferenceApi, "openai-responses");
+    assert.ok(payload.messages.some((message) => /Choose partner \[1\]/.test(message)));
+    assert.ok(!payload.messages.some((message) => /Choose endpoint mode/.test(message)));
+    assert.ok(
+      payload.lines.some((line) =>
+        line.includes("Using NVIDIA Partner endpoints with partner DeepInfra"),
+      ),
+    );
+    assert.ok(payload.lines.some((line) => line.includes("offers this mode only")));
+  });
+
+  it("prints NVIDIA Partner credential guide box when the API key is not preset", () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-ncp-guide-box-"));
+    const fakeBin = path.join(tmpDir, "bin");
+    const scriptPath = path.join(tmpDir, "ncp-guide-box-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
+    const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
+
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(
+      path.join(fakeBin, "curl"),
+      `#!/usr/bin/env bash
+body='{"id":"resp_123"}'
+status="200"
+outfile=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) outfile="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s' "$body" > "$outfile"
+printf '%s' "$status"
+`,
+      { mode: 0o755 },
+    );
+
+    const script = String.raw`
+const credentials = require(${credentialsPath});
+const runner = require(${runnerPath});
+
+const answers = ["2", "4", "deepinfra-secret", "deepinfra/meta-llama-3.1-8b-instruct"];
+const messages = [];
+
+credentials.prompt = async (message) => {
+  messages.push(message);
+  return answers.shift() || "";
+};
+runner.runCapture = () => "";
+
+const { setupNim } = require(${onboardPath});
+
+(async () => {
+  delete process.env.DEEPINFRA_API_KEY;
+  const originalLog = console.log;
+  const lines = [];
+  console.log = (...args) => lines.push(args.join(" "));
+  try {
+    const result = await setupNim(null);
+    originalLog(JSON.stringify({ result, messages, lines }));
+  } finally {
+    console.log = originalLog;
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${fakeBin}:${process.env.PATH || ""}`,
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout.trim());
+    assert.equal(payload.result.provider, "nvidia-ncp");
+    assert.ok(payload.lines.some((line) => line.includes("DeepInfra API Key required")));
+    assert.ok(payload.lines.some((line) => line.includes("https://deepinfra.com/dash/api_keys")));
+    assert.ok(payload.lines.some((line) => line.includes("┌────────────────")));
+  });
+
   it("warms and validates Ollama via localhost before moving on", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-ollama-validation-"));
@@ -568,7 +737,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["7", "1"];
+const answers = ["8", "1"];
 const messages = [];
 const commands = [];
 
@@ -665,7 +834,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["7", "2", "back", "1", ""];
+const answers = ["8", "2", "back", "1", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -767,7 +936,7 @@ exit 0
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["7", "1"];
+const answers = ["8", "1"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -874,7 +1043,7 @@ exit 0
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["7", "1", "2", "llama3.2:3b"];
+const answers = ["8", "1", "2", "llama3.2:3b"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -976,7 +1145,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["2", "5", "bad-model", "gpt-5.4-mini"];
+const answers = ["3", "5", "bad-model", "gpt-5.4-mini"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1059,7 +1228,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["4", "4", "claude-bad", "claude-haiku-4-5"];
+const answers = ["5", "4", "claude-bad", "claude-haiku-4-5"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1154,7 +1323,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["4", "", "4", "2"];
+const answers = ["5", "", "5", "2"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1237,7 +1406,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["5", "https://proxy.example.com/v1/messages?token=secret#frag", "claude-sonnet-proxy"];
+const answers = ["6", "https://proxy.example.com/v1/messages?token=secret#frag", "claude-sonnet-proxy"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1329,7 +1498,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["3", "https://proxy.example.com/v1/chat/completions?token=secret#frag", "bad-model", "good-model"];
+const answers = ["4", "https://proxy.example.com/v1/chat/completions?token=secret#frag", "bad-model", "good-model"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1432,7 +1601,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["3", "", "", ""];
+const answers = ["4", "", "", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1528,7 +1697,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["5", "https://proxy.example.com/v1/messages?token=secret#frag", "bad-claude", "good-claude"];
+const answers = ["6", "https://proxy.example.com/v1/messages?token=secret#frag", "bad-claude", "good-claude"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1630,7 +1799,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["3", "https://proxy.example.com/v1", "back", "1", ""];
+const answers = ["4", "https://proxy.example.com/v1", "back", "1", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1719,7 +1888,7 @@ printf '200'
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["2", "", "back", "1", ""];
+const answers = ["3", "", "back", "1", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -1818,7 +1987,7 @@ printf '%s' "$status"
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["2", "", "6", ""];
+const answers = ["3", "", "7", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2003,7 +2172,7 @@ const { setupNim } = require(${onboardPath});
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["2", "", "retry", "sk-good", ""];
+const answers = ["3", "", "retry", "sk-good", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2081,7 +2250,7 @@ const { setupNim } = require(${onboardPath});
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["4", "", "retry", "anthropic-good", ""];
+const answers = ["5", "", "retry", "anthropic-good", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2159,7 +2328,7 @@ const { setupNim } = require(${onboardPath});
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["6", "", "retry", "gemini-good", ""];
+const answers = ["7", "", "retry", "gemini-good", ""];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2239,7 +2408,7 @@ const { setupNim } = require(${onboardPath});
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["3", "https://proxy.example.com/v1/chat/completions?token=secret#frag", "custom-model", "retry", "proxy-good", "custom-model"];
+const answers = ["4", "https://proxy.example.com/v1/chat/completions?token=secret#frag", "custom-model", "retry", "proxy-good", "custom-model"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2333,7 +2502,7 @@ const { setupNim } = require(${onboardPath});
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["5", "https://proxy.example.com/v1/messages?token=secret#frag", "claude-proxy", "retry", "anthropic-proxy-good", "claude-proxy"];
+const answers = ["6", "https://proxy.example.com/v1/messages?token=secret#frag", "claude-proxy", "retry", "anthropic-proxy-good", "claude-proxy"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2448,12 +2617,12 @@ printf '%s' "$status"
       { mode: 0o755 },
     );
 
-    // vLLM is option 7 (build, openai, custom, anthropic, anthropicCompatible, gemini, vllm)
+    // vLLM is option 8 after adding the NCP provider before local endpoints.
     const script = String.raw`
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
 
-const answers = ["7"];
+const answers = ["8"];
 const messages = [];
 
 credentials.prompt = async (message) => {
@@ -2547,7 +2716,7 @@ printf '%s' "$status"
       { mode: 0o755 },
     );
 
-    // NIM-local is option 7 (build, openai, custom, anthropic, anthropicCompatible, gemini, nim-local)
+    // NIM-local is option 8 after adding the NCP provider before local endpoints.
     // No ollama, no vLLM — only NIM-local shows up as experimental option
     const script = String.raw`
 const credentials = require(${credentialsPath});
@@ -2561,8 +2730,8 @@ nimMod.containerName = () => "nemoclaw-nim-test";
 nimMod.startNimContainerByName = () => "container-123";
 nimMod.waitForNimHealth = () => true;
 
-// Select option 7 (nim-local), then model 1
-const answers = ["7", "1"];
+// Select option 8 (nim-local), then model 1
+const answers = ["8", "1"];
 const messages = [];
 
 credentials.prompt = async (message) => {

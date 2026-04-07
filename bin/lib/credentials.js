@@ -214,6 +214,30 @@ function prompt(question, opts = {}) {
   });
 }
 
+/** Horizontal rules inside ┌─ … ─┐ / └─ … ─┘ boxes (wide enough for NCP steps that embed URLs). */
+const DEFAULT_CREDENTIAL_GUIDE_INNER_WIDTH = 78;
+
+function credentialGuideRow(text, textWidth) {
+  const t = text.length > textWidth ? `${text.slice(0, textWidth - 3)}...` : text;
+  return `  │  ${t.padEnd(textWidth)}│`;
+}
+
+/**
+ * Print a framed multi-line guide (same style as NVIDIA Endpoints API key instructions).
+ * @param {string[]} lines - One cell per row; use "" for a blank row.
+ * @param {number} [innerDashCount=65] - Number of ─ between corners; body text fits in `innerDashCount - 2` columns.
+ */
+function printCredentialGuideBox(lines, innerDashCount = DEFAULT_CREDENTIAL_GUIDE_INNER_WIDTH) {
+  const textWidth = innerDashCount - 2;
+  console.log("");
+  console.log(`  ┌${"─".repeat(innerDashCount)}┐`);
+  for (const line of lines) {
+    console.log(credentialGuideRow(line, textWidth));
+  }
+  console.log(`  └${"─".repeat(innerDashCount)}┘`);
+  console.log("");
+}
+
 async function ensureApiKey() {
   let key = getCredential("NVIDIA_API_KEY");
   if (key) {
@@ -221,16 +245,14 @@ async function ensureApiKey() {
     return;
   }
 
-  console.log("");
-  console.log("  ┌─────────────────────────────────────────────────────────────────┐");
-  console.log("  │  NVIDIA API Key required                                        │");
-  console.log("  │                                                                 │");
-  console.log("  │  1. Go to https://build.nvidia.com/settings/api-keys            │");
-  console.log("  │  2. Sign in with your NVIDIA account                            │");
-  console.log("  │  3. Click 'Generate API Key' button                             │");
-  console.log("  │  4. Paste the key below (starts with nvapi-)                    │");
-  console.log("  └─────────────────────────────────────────────────────────────────┘");
-  console.log("");
+  printCredentialGuideBox([
+    "NVIDIA API Key required",
+    "",
+    "1. Go to https://build.nvidia.com/settings/api-keys",
+    "2. Sign in with your NVIDIA account",
+    "3. Click 'Generate API Key' button",
+    "4. Paste the key below (starts with nvapi-)",
+  ]);
 
   while (true) {
     key = normalizeCredentialValue(await prompt("  NVIDIA API Key: ", { secret: true }));
@@ -287,14 +309,15 @@ async function ensureGithubToken() {
     /* ignored */
   }
 
-  console.log("");
-  console.log("  ┌──────────────────────────────────────────────────┐");
-  console.log("  │  GitHub token required (private repo detected)   │");
-  console.log("  │                                                  │");
-  console.log("  │  Option A: gh auth login (if you have gh CLI)    │");
-  console.log("  │  Option B: Paste a PAT with read:packages scope  │");
-  console.log("  └──────────────────────────────────────────────────┘");
-  console.log("");
+  printCredentialGuideBox(
+    [
+      "GitHub token required (private repo detected)",
+      "",
+      "Option A: gh auth login (if you have gh CLI)",
+      "Option B: Paste a PAT with read:packages scope",
+    ],
+    50,
+  );
 
   token = await prompt("  GitHub Token: ", { secret: true });
 
@@ -316,6 +339,7 @@ const exports_ = {
   saveCredential,
   getCredential,
   prompt,
+  printCredentialGuideBox,
   ensureApiKey,
   ensureGithubToken,
   isRepoPrivate,

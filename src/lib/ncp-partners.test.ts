@@ -15,6 +15,7 @@ import {
   listNcpEndpointModes,
   listNcpPartnerOptions,
   listNcpPartners,
+  resolveNcpCredentialHelpSteps,
   resolveNcpPartnerSelection,
 } from "./ncp-partners";
 
@@ -104,6 +105,17 @@ describe("NCP partner catalog", () => {
     expect(resolveNcpPartnerSelection("together", null)).toEqual(
       expect.objectContaining({ endpointMode: "serverless" }),
     );
+  });
+
+  it("resolves help step placeholders from catalog credential metadata", () => {
+    const cred = getNcpEndpointModeConfig("baseten", "serverless")!.credential;
+    expect(resolveNcpCredentialHelpSteps(cred)[0]).toBe(
+      "Sign in to your Baseten account: https://app.baseten.co/settings/api_keys.",
+    );
+    const lightning = getNcpEndpointModeConfig("lightning-ai", "serverless")!.credential;
+    const lightningSteps = resolveNcpCredentialHelpSteps(lightning);
+    expect(lightningSteps[0]).toContain("https://api.lightning.ai/docs/overview/model-apis");
+    expect(lightningSteps[1]).toContain("https://lightning.ai/models?section=allmodels");
   });
 
   it("fails safely for unknown partners, dedicated mode, or invalid modes", () => {

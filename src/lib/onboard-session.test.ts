@@ -120,6 +120,25 @@ describe("onboard session", () => {
     expect(loaded.metadata.token).toBeUndefined();
   });
 
+  it("persists NCP partner metadata for resume-safe provider selection", () => {
+    session.saveSession(session.createSession());
+    session.markStepComplete("provider_selection", {
+      provider: "nvidia-ncp",
+      ncpPartner: "deepinfra",
+      ncpEndpointMode: "serverless",
+      model: "deepinfra/meta-llama-3.1-8b-instruct",
+      endpointUrl: "https://api.deepinfra.com/v1/openai",
+      credentialEnv: "DEEPINFRA_API_KEY",
+    });
+
+    const loaded = session.loadSession();
+    expect(loaded.provider).toBe("nvidia-ncp");
+    expect(loaded.ncpPartner).toBe("deepinfra");
+    expect(loaded.ncpEndpointMode).toBe("serverless");
+    expect(session.summarizeForDebug().ncpPartner).toBe("deepinfra");
+    expect(session.summarizeForDebug().ncpEndpointMode).toBe("serverless");
+  });
+
   it("does not clear existing metadata when updates omit whitelisted metadata fields", () => {
     session.saveSession(session.createSession({ metadata: { gatewayName: "nemoclaw" } }));
     session.markStepComplete("provider_selection", {

@@ -114,6 +114,24 @@ interface CreateEndpointModeOptions {
   credential: NcpCredentialMetadata;
 }
 
+/**
+ * Substitute placeholders in NCP onboarding `helpSteps`:
+ * `{consoleUrl}`, `{helpUrl}`, `{label}`.
+ * Unknown `{token}` text is left unchanged.
+ */
+export function resolveNcpCredentialHelpSteps(credential: NcpCredentialMetadata): string[] {
+  const values: Record<string, string> = {
+    consoleUrl: credential.consoleUrl ?? "",
+    helpUrl: credential.helpUrl ?? "",
+    label: credential.label,
+  };
+  return credential.helpSteps.map((step) =>
+    step.replace(/\{(\w+)\}/g, (full, key: string) =>
+      Object.prototype.hasOwnProperty.call(values, key) ? values[key] : full,
+    ),
+  );
+}
+
 function createCredential(options: CreateCredentialOptions): NcpCredentialMetadata {
   return {
     env: options.env,
@@ -178,7 +196,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         helpUrl: "https://docs.baseten.co/organization/api-keys",
         consoleUrl: "https://app.baseten.co/settings/api_keys",
         helpSteps: [
-          "Sign in to your Baseten account.",
+          "Sign in to your Baseten account: {consoleUrl}.",
           "Open API keys.",
           "Create or copy an inference-capable key.",
           "Paste the key below.",
@@ -213,8 +231,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
       endpointUrlTemplate: "https://api.inference.wandb.ai/v1",
       endpointUrlSource: "template",
       apiCompatibility: "unknown",
-      docsUrl:
-        "https://docs.coreweave.com/products/inference/serverless",
+      docsUrl: "https://docs.coreweave.com/products/inference/serverless",
       credential: createCredential({
         env: "COREWEAVE_API_ACCESS_TOKEN",
         label: "CoreWeave API Access Token",
@@ -241,7 +258,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         helpUrl: "https://deepinfra.com/dash/api_keys",
         consoleUrl: "https://deepinfra.com/dash/api_keys",
         helpSteps: [
-          "Sign in to your DeepInfra account.",
+          "Sign in to your DeepInfra account: {consoleUrl}.",
           "Open API keys.",
           "Create or copy an API key.",
           "Paste the key below.",
@@ -262,7 +279,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         label: "DigitalOcean Model Access Key",
         consoleUrl: "https://cloud.digitalocean.com/gen-ai/model-access-keys",
         helpSteps: [
-          "Sign in to the DigitalOcean Control Panel.",
+          "Sign in to the DigitalOcean Control Panel: {consoleUrl}.",
           "Open Model Access Keys.",
           "Create or copy a serverless inference key.",
           "Paste the key below.",
@@ -282,7 +299,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         label: "Fireworks AI API Key",
         consoleUrl: "https://app.fireworks.ai/settings/users/api-keys",
         helpSteps: [
-          "Sign in to the Fireworks dashboard.",
+          "Sign in to the Fireworks dashboard: {consoleUrl}.",
           "Open user API keys.",
           "Create or copy an API key.",
           "Paste the key below.",
@@ -303,7 +320,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         helpUrl: "https://docs.gmicloud.ai/api-reference/organizations/create-an-api-key",
         consoleUrl: "https://console.gmicloud.ai/user-setting/api-keys",
         helpSteps: [
-          "Sign in to the GMI Cloud console.",
+          "Sign in to the GMI Cloud console: {consoleUrl}.",
           "Open Organization Settings and API Keys.",
           "Create or copy an API key.",
           "Paste the key below.",
@@ -324,7 +341,8 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         helpUrl: "https://api.lightning.ai/docs/overview/model-apis",
         consoleUrl: "https://lightning.ai/models?section=allmodels",
         helpSteps: [
-          "Open the Lightning AI custom inference docs or console.",
+          "Documentation: {helpUrl}",
+          "Console: {consoleUrl}",
           "Create or copy the credential for the hosted endpoint you plan to call.",
           "Confirm the endpoint path used by that deployment.",
           "Paste the key below.",
@@ -346,7 +364,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         helpUrl: "https://docs.together.ai/docs/api-keys-authentication",
         consoleUrl: "https://api.together.xyz/settings/api-keys",
         helpSteps: [
-          "Sign in to Together AI.",
+          "Sign in to Together AI: {consoleUrl}.",
           "Open API keys.",
           "Create or copy an API key.",
           "Paste the key below.",
@@ -366,7 +384,7 @@ const NCP_PARTNER_CATALOG: Record<NcpPartnerId, NcpPartnerCatalogEntry> = {
         label: "Vultr Inference API Key",
         consoleUrl: "https://my.vultr.com/inference/",
         helpSteps: [
-          "Sign in to the Vultr Customer Portal.",
+          "Sign in to the Vultr Customer Portal: {consoleUrl}.",
           "Open the Serverless Inference subscription.",
           "Copy the inference API key from the Overview tab.",
           "Paste the key below.",
@@ -419,8 +437,7 @@ export function resolveNcpPartnerSelection(
   endpointMode: string | null | undefined,
 ): ResolvedNcpPartnerSelection | null {
   const partner = getNcpPartner(partnerId);
-  const normalized =
-    endpointMode == null || endpointMode === "" ? "serverless" : endpointMode;
+  const normalized = endpointMode == null || endpointMode === "" ? "serverless" : endpointMode;
   const endpoint = getNcpEndpointModeConfig(partnerId, normalized);
   if (!partner || !endpoint) return null;
   return {

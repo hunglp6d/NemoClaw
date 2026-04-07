@@ -486,6 +486,28 @@ describe("onboard helpers", () => {
     }
   });
 
+  it("normalizes NVIDIA Partner endpoint aliases for non-interactive hints", () => {
+    const previousProvider = process.env.NEMOCLAW_PROVIDER;
+    const previousModel = process.env.NEMOCLAW_MODEL;
+    process.env.NEMOCLAW_PROVIDER = "nvidia-ncp";
+    process.env.NEMOCLAW_MODEL = "deepinfra/meta-llama-3.1-8b-instruct";
+    try {
+      expect(getRequestedProviderHint(true)).toBe("ncp");
+      expect(getRequestedModelHint(true)).toBe("deepinfra/meta-llama-3.1-8b-instruct");
+    } finally {
+      if (previousProvider === undefined) {
+        delete process.env.NEMOCLAW_PROVIDER;
+      } else {
+        process.env.NEMOCLAW_PROVIDER = previousProvider;
+      }
+      if (previousModel === undefined) {
+        delete process.env.NEMOCLAW_MODEL;
+      } else {
+        process.env.NEMOCLAW_MODEL = previousModel;
+      }
+    }
+  });
+
   it("detects resume conflicts for explicit provider and model changes", () => {
     const previousProvider = process.env.NEMOCLAW_PROVIDER;
     const previousModel = process.env.NEMOCLAW_MODEL;
@@ -526,6 +548,68 @@ describe("onboard helpers", () => {
         delete process.env.NEMOCLAW_MODEL;
       } else {
         process.env.NEMOCLAW_MODEL = previousModel;
+      }
+    }
+  });
+
+  it("detects resume conflicts for explicit NCP partner, mode, and model changes", () => {
+    const previousProvider = process.env.NEMOCLAW_PROVIDER;
+    const previousModel = process.env.NEMOCLAW_MODEL;
+    const previousPartner = process.env.NEMOCLAW_NCP_PARTNER;
+    const previousEndpointMode = process.env.NEMOCLAW_NCP_ENDPOINT_MODE;
+    process.env.NEMOCLAW_PROVIDER = "ncp";
+    process.env.NEMOCLAW_MODEL = "deepinfra/meta-llama-3.1-8b-instruct";
+    process.env.NEMOCLAW_NCP_PARTNER = "deepinfra";
+    process.env.NEMOCLAW_NCP_ENDPOINT_MODE = "serverless";
+    try {
+      expect(
+        getResumeConfigConflicts(
+          {
+            sandboxName: "my-assistant",
+            provider: "nvidia-ncp",
+            ncpPartner: "together",
+            ncpEndpointMode: "dedicated",
+            model: "meta-llama-3.1-8b-instruct",
+          },
+          { nonInteractive: true },
+        ),
+      ).toEqual([
+        {
+          field: "NCP partner",
+          requested: "deepinfra",
+          recorded: "together",
+        },
+        {
+          field: "NCP endpoint mode",
+          requested: "serverless",
+          recorded: "dedicated",
+        },
+        {
+          field: "model",
+          requested: "deepinfra/meta-llama-3.1-8b-instruct",
+          recorded: "meta-llama-3.1-8b-instruct",
+        },
+      ]);
+    } finally {
+      if (previousProvider === undefined) {
+        delete process.env.NEMOCLAW_PROVIDER;
+      } else {
+        process.env.NEMOCLAW_PROVIDER = previousProvider;
+      }
+      if (previousModel === undefined) {
+        delete process.env.NEMOCLAW_MODEL;
+      } else {
+        process.env.NEMOCLAW_MODEL = previousModel;
+      }
+      if (previousPartner === undefined) {
+        delete process.env.NEMOCLAW_NCP_PARTNER;
+      } else {
+        process.env.NEMOCLAW_NCP_PARTNER = previousPartner;
+      }
+      if (previousEndpointMode === undefined) {
+        delete process.env.NEMOCLAW_NCP_ENDPOINT_MODE;
+      } else {
+        process.env.NEMOCLAW_NCP_ENDPOINT_MODE = previousEndpointMode;
       }
     }
   });

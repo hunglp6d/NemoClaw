@@ -43,6 +43,7 @@ const {
   getCredential,
   normalizeCredentialValue,
   saveCredential,
+  printCredentialGuideBox,
 } = require("./credentials");
 const registry = require("./registry");
 const nim = require("./nim");
@@ -69,6 +70,15 @@ const providerModels = require("../../dist/lib/provider-models");
 const sandboxCreateStream = require("../../dist/lib/sandbox-create-stream");
 const validationRecovery = require("../../dist/lib/validation-recovery");
 const webSearch = require("../../dist/lib/web-search");
+const {
+  NCP_PARTNER_MENU_TITLE,
+  NCP_PROVIDER_LABEL,
+  NCP_SHARED_PROVIDER_ID,
+  listNcpEndpointModes,
+  listNcpPartnerOptions,
+  resolveNcpCredentialHelpSteps,
+  resolveNcpPartnerSelection,
+} = require("../../dist/lib/ncp-partners");
 
 /**
  * Create a temp file inside a directory with a cryptographically random name.
@@ -458,17 +468,45 @@ const {
 
 // validateNvidiaApiKeyValue — see validation import above
 
-async function replaceNamedCredential(envName, label, helpUrl = null, validator = null) {
-  if (helpUrl) {
+function printNcpCredentialGuideBox(credentialMeta) {
+  const rawSteps =
+    credentialMeta && Array.isArray(credentialMeta.helpSteps) ? credentialMeta.helpSteps : [];
+  const title = `${credentialMeta.label} required`;
+  const lines = [title, ""];
+  if (rawSteps.length > 0) {
+    const steps = resolveNcpCredentialHelpSteps(credentialMeta);
+    steps.forEach((step, i) => {
+      lines.push(`${i + 1}. ${step}`);
+    });
+  } else if (credentialMeta.helpUrl) {
+    lines.push(`See: ${credentialMeta.helpUrl}`);
+  } else {
+    lines.push(`Paste your ${credentialMeta.label} below.`);
+  }
+  printCredentialGuideBox(lines);
+}
+
+async function replaceNamedCredential(
+  envName,
+  label,
+  helpUrl = null,
+  validator = null,
+  ncpCredentialMeta = null,
+) {
+  const promptLabel =
+    ncpCredentialMeta && ncpCredentialMeta.label ? ncpCredentialMeta.label : label;
+  if (ncpCredentialMeta && ncpCredentialMeta.helpSteps && ncpCredentialMeta.helpSteps.length > 0) {
+    printNcpCredentialGuideBox(ncpCredentialMeta);
+  } else if (helpUrl) {
     console.log("");
     console.log(`  Get your ${label} from: ${helpUrl}`);
     console.log("");
   }
 
   while (true) {
-    const key = normalizeCredentialValue(await prompt(`  ${label}: `, { secret: true }));
+    const key = normalizeCredentialValue(await prompt(`  ${promptLabel}: `, { secret: true }));
     if (!key) {
-      console.error(`  ${label} is required.`);
+      console.error(`  ${promptLabel} is required.`);
       continue;
     }
     const validationError = typeof validator === "function" ? validator(key) : null;
@@ -485,7 +523,28 @@ async function replaceNamedCredential(envName, label, helpUrl = null, validator 
   }
 }
 
-async function promptValidationRecovery(label, recovery, credentialEnv = null, helpUrl = null) {
+async function ensureNcpCatalogCredential(envName, credentialMeta) {
+  const existing = getCredential(envName);
+  if (existing) {
+    process.env[envName] = existing;
+    return existing;
+  }
+  return replaceNamedCredential(
+    envName,
+    credentialMeta.label,
+    credentialMeta.helpUrl,
+    null,
+    credentialMeta,
+  );
+}
+
+async function promptValidationRecovery(
+  label,
+  recovery,
+  credentialEnv = null,
+  helpUrl = null,
+  ncpCredentialMeta = null,
+) {
   if (isNonInteractive()) {
     process.exit(1);
   }
@@ -507,7 +566,21 @@ async function promptValidationRecovery(label, recovery, credentialEnv = null, h
     }
     if (choice === "" || choice === "retry") {
       const validator = credentialEnv === "NVIDIA_API_KEY" ? validateNvidiaApiKeyValue : null;
-      await replaceNamedCredential(credentialEnv, `${label} API key`, helpUrl, validator);
+      if (
+        ncpCredentialMeta &&
+        ncpCredentialMeta.helpSteps &&
+        ncpCredentialMeta.helpSteps.length > 0
+      ) {
+        await replaceNamedCredential(
+          credentialEnv,
+          ncpCredentialMeta.label,
+          ncpCredentialMeta.helpUrl || helpUrl,
+          validator,
+          ncpCredentialMeta,
+        );
+      } else {
+        await replaceNamedCredential(credentialEnv, `${label} API key`, helpUrl, validator);
+      }
       return "credential";
     }
     console.log("  Please choose a provider/model again.");
@@ -1120,6 +1193,7 @@ async function validateCustomOpenAiLikeSelection(
   model,
   credentialEnv,
   helpUrl = null,
+  ncpCredentialMeta = null,
 ) {
   const apiKey = getCredential(credentialEnv);
   const probe = probeOpenAiLikeEndpoint(endpointUrl, model, apiKey);
@@ -1137,6 +1211,7 @@ async function validateCustomOpenAiLikeSelection(
     getProbeRecovery(probe, { allowModelRetry: true }),
     credentialEnv,
     helpUrl,
+    ncpCredentialMeta,
   );
   if (retry === "selection") {
     console.log("  Please choose a provider/model again.");
@@ -1280,6 +1355,8 @@ function getEffectiveProviderName(providerKey) {
   }
 
   switch (providerKey) {
+    case "ncp":
+      return NCP_SHARED_PROVIDER_ID;
     case "nim-local":
       return "nvidia-nim";
     case "ollama":
@@ -1289,6 +1366,48 @@ function getEffectiveProviderName(providerKey) {
     default:
       return providerKey;
   }
+}
+
+function getNonInteractiveNcpPartner() {
+  const partnerId = (process.env.NEMOCLAW_NCP_PARTNER || "").trim().toLowerCase();
+  if (!partnerId) return null;
+  const partner = listNcpPartnerOptions().find((option) => option.id === partnerId);
+  if (!partner) {
+    console.error(`  Unsupported NEMOCLAW_NCP_PARTNER: ${partnerId}`);
+    console.error(
+      `  Valid values: ${listNcpPartnerOptions()
+        .map((option) => option.id)
+        .join(", ")}`,
+    );
+    process.exit(1);
+  }
+  return partner.id;
+}
+
+function getNonInteractiveNcpEndpointMode(partnerId = null) {
+  const endpointMode = (process.env.NEMOCLAW_NCP_ENDPOINT_MODE || "").trim().toLowerCase();
+  if (!endpointMode) return null;
+  const validModes = new Set(
+    (partnerId
+      ? listNcpEndpointModes(partnerId)
+      : listNcpPartnerOptions().flatMap((partner) => listNcpEndpointModes(partner.id))
+    ).map((option) => String(option.mode)),
+  );
+  if (!validModes.has(endpointMode)) {
+    console.error(`  Unsupported NEMOCLAW_NCP_ENDPOINT_MODE: ${endpointMode}`);
+    console.error(`  Valid values: ${Array.from(validModes).join(", ")}`);
+    process.exit(1);
+  }
+  return endpointMode;
+}
+
+function canUseGenericNcpValidation(selection) {
+  if (!selection) return false;
+  return (
+    selection.endpoint.apiCompatibility === "openai" &&
+    selection.endpoint.credential.auth.headerName === "Authorization" &&
+    selection.endpoint.credential.auth.valuePrefix === "Bearer"
+  );
 }
 
 function getResumeConfigConflicts(session, opts = {}) {
@@ -1316,6 +1435,30 @@ function getResumeConfigConflicts(session, opts = {}) {
       requested: effectiveRequestedProvider,
       recorded: session.provider,
     });
+  }
+
+  if (effectiveRequestedProvider === NCP_SHARED_PROVIDER_ID) {
+    const requestedNcpPartner = getNonInteractiveNcpPartner();
+    if (requestedNcpPartner && session?.ncpPartner && requestedNcpPartner !== session.ncpPartner) {
+      conflicts.push({
+        field: "NCP partner",
+        requested: requestedNcpPartner,
+        recorded: session.ncpPartner,
+      });
+    }
+
+    const requestedNcpEndpointMode = getNonInteractiveNcpEndpointMode(requestedNcpPartner);
+    if (
+      requestedNcpEndpointMode &&
+      session?.ncpEndpointMode &&
+      requestedNcpEndpointMode !== session.ncpEndpointMode
+    ) {
+      conflicts.push({
+        field: "NCP endpoint mode",
+        requested: requestedNcpEndpointMode,
+        recorded: session.ncpEndpointMode,
+      });
+    }
   }
 
   const requestedModel = getRequestedModelHint(nonInteractive);
@@ -1469,6 +1612,7 @@ function getNonInteractiveProvider() {
   if (!providerKey) return null;
   const aliases = {
     cloud: "build",
+    "nvidia-ncp": "ncp",
     nim: "nim-local",
     vllm: "vllm",
     anthropiccompatible: "anthropicCompatible",
@@ -1476,6 +1620,7 @@ function getNonInteractiveProvider() {
   const normalized = aliases[providerKey] || providerKey;
   const validProviders = new Set([
     "build",
+    "ncp",
     "openai",
     "anthropic",
     "anthropicCompatible",
@@ -1488,7 +1633,7 @@ function getNonInteractiveProvider() {
   if (!validProviders.has(normalized)) {
     console.error(`  Unsupported NEMOCLAW_PROVIDER: ${providerKey}`);
     console.error(
-      "  Valid values: build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm",
+      "  Valid values: build, ncp, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm",
     );
     process.exit(1);
   }
@@ -2244,6 +2389,8 @@ async function setupNim(gpu) {
 
   let model = null;
   let provider = REMOTE_PROVIDER_CONFIG.build.providerName;
+  let ncpPartner = null;
+  let ncpEndpointMode = null;
   let nimContainer = null;
   let endpointUrl = REMOTE_PROVIDER_CONFIG.build.endpointUrl;
   let credentialEnv = REMOTE_PROVIDER_CONFIG.build.credentialEnv;
@@ -2258,11 +2405,18 @@ async function setupNim(gpu) {
     ignoreError: true,
   });
   const requestedProvider = isNonInteractive() ? getNonInteractiveProvider() : null;
+  const requestedNcpPartner =
+    isNonInteractive() && requestedProvider === "ncp" ? getNonInteractiveNcpPartner() : null;
+  const requestedNcpEndpointMode =
+    isNonInteractive() && requestedProvider === "ncp"
+      ? getNonInteractiveNcpEndpointMode(requestedNcpPartner)
+      : null;
   const requestedModel = isNonInteractive()
     ? getNonInteractiveModel(requestedProvider || "build")
     : null;
   const options = [];
   options.push({ key: "build", label: "NVIDIA Endpoints" });
+  options.push({ key: "ncp", label: NCP_PROVIDER_LABEL });
   options.push({ key: "openai", label: "OpenAI" });
   options.push({ key: "custom", label: "Other OpenAI-compatible endpoint" });
   options.push({ key: "anthropic", label: "Anthropic" });
@@ -2327,6 +2481,9 @@ async function setupNim(gpu) {
         const idx = parseInt(choice || String(defaultIdx), 10) - 1;
         selected = options[idx] || options[defaultIdx - 1];
       }
+
+      ncpPartner = null;
+      ncpEndpointMode = null;
 
       if (REMOTE_PROVIDER_CONFIG[selected.key]) {
         const remoteConfig = REMOTE_PROVIDER_CONFIG[selected.key];
@@ -2568,6 +2725,243 @@ async function setupNim(gpu) {
 
         console.log(`  Using ${remoteConfig.label} with model: ${model}`);
         break;
+      } else if (selected.key === "ncp") {
+        provider = NCP_SHARED_PROVIDER_ID;
+        credentialEnv = null;
+        endpointUrl = null;
+        preferredInferenceApi = null;
+
+        const partnerOptions = listNcpPartnerOptions();
+        if (partnerOptions.length === 0) {
+          console.error("  No NVIDIA Partner endpoints are available in the catalog.");
+          process.exit(1);
+        }
+
+        partnerSelectionLoop: while (true) {
+          let selectedPartnerOption;
+          if (isNonInteractive()) {
+            if (!requestedNcpPartner) {
+              console.error(
+                "  NEMOCLAW_NCP_PARTNER is required when NEMOCLAW_PROVIDER=ncp in non-interactive mode.",
+              );
+              process.exit(1);
+            }
+            selectedPartnerOption =
+              partnerOptions.find((option) => option.id === requestedNcpPartner) || null;
+            if (!selectedPartnerOption) {
+              console.error(`  Unsupported NCP partner: ${requestedNcpPartner}`);
+              process.exit(1);
+            }
+            note(`  [non-interactive] NCP partner: ${selectedPartnerOption.id}`);
+          } else {
+            console.log("");
+            console.log(`  ${NCP_PARTNER_MENU_TITLE}:`);
+            partnerOptions.forEach((option, i) => {
+              console.log(`    ${i + 1}) ${option.label}`);
+            });
+            console.log("");
+
+            const partnerChoice = await prompt("  Choose partner [1]: ");
+            const navigation = getNavigationChoice(partnerChoice);
+            if (navigation === "back") {
+              console.log("  Returning to provider selection.");
+              console.log("");
+              continue selectionLoop;
+            }
+            if (navigation === "exit") {
+              exitOnboardFromPrompt();
+            }
+            const partnerIdx = parseInt(partnerChoice || "1", 10) - 1;
+            selectedPartnerOption = partnerOptions[partnerIdx] || partnerOptions[0];
+          }
+
+          const modeOptions = listNcpEndpointModes(selectedPartnerOption.id);
+          if (modeOptions.length === 0) {
+            console.error(`  No endpoint modes are configured for ${selectedPartnerOption.label}.`);
+            if (isNonInteractive()) {
+              process.exit(1);
+            }
+            console.log("");
+            continue selectionLoop;
+          }
+
+          while (true) {
+            let selectedModeOption;
+            if (isNonInteractive()) {
+              const requestedMode = requestedNcpEndpointMode || modeOptions[0].mode;
+              selectedModeOption =
+                modeOptions.find((option) => option.mode === requestedMode) || null;
+              if (!selectedModeOption) {
+                console.error(
+                  `  Endpoint mode '${requestedMode}' is not available for ${selectedPartnerOption.label}.`,
+                );
+                process.exit(1);
+              }
+              note(`  [non-interactive] NCP endpoint mode: ${selectedModeOption.mode}`);
+            } else if (modeOptions.length === 1) {
+              selectedModeOption = modeOptions[0];
+              console.log("");
+              console.log(`  Endpoint mode: ${selectedModeOption.menuLabel}`);
+              console.log(
+                `  (${selectedPartnerOption.label} in NemoClaw offers this mode only — no selection needed.)`,
+              );
+              console.log("");
+            } else {
+              console.log("");
+              console.log(`  ${selectedPartnerOption.label} endpoint modes:`);
+              modeOptions.forEach((option, i) => {
+                console.log(`    ${i + 1}) ${option.menuLabel}`);
+              });
+              console.log("");
+
+              const modeChoice = await prompt("  Choose endpoint mode [1]: ");
+              const navigation = getNavigationChoice(modeChoice);
+              if (navigation === "back") {
+                console.log("  Returning to partner selection.");
+                console.log("");
+                continue partnerSelectionLoop;
+              }
+              if (navigation === "exit") {
+                exitOnboardFromPrompt();
+              }
+              const modeIdx = parseInt(modeChoice || "1", 10) - 1;
+              selectedModeOption = modeOptions[modeIdx] || modeOptions[0];
+            }
+
+            const resolvedSelection = resolveNcpPartnerSelection(
+              selectedPartnerOption.id,
+              selectedModeOption.mode,
+            );
+            if (!resolvedSelection) {
+              console.error(
+                `  Could not resolve the ${selectedPartnerOption.label} ${selectedModeOption.mode} endpoint.`,
+              );
+              if (isNonInteractive()) {
+                process.exit(1);
+              }
+              console.log("");
+              continue partnerSelectionLoop;
+            }
+
+            ncpPartner = resolvedSelection.partner.id;
+            ncpEndpointMode = resolvedSelection.endpointMode;
+            credentialEnv = resolvedSelection.endpoint.credential.env;
+
+            const defaultEndpointUrl =
+              resolvedSelection.endpoint.endpointUrl ||
+              resolvedSelection.endpoint.endpointUrlTemplate ||
+              "";
+            if (resolvedSelection.endpoint.endpointUrlSource === "fixed" && defaultEndpointUrl) {
+              endpointUrl = defaultEndpointUrl;
+            } else {
+              const endpointInput = isNonInteractive()
+                ? (process.env.NEMOCLAW_ENDPOINT_URL || defaultEndpointUrl).trim()
+                : await prompt(
+                    `  ${resolvedSelection.partner.label} base URL${defaultEndpointUrl ? ` [${defaultEndpointUrl}]` : ""}: `,
+                  );
+              const navigation = getNavigationChoice(endpointInput);
+              if (navigation === "back") {
+                if (modeOptions.length === 1) {
+                  console.log("  Returning to partner selection.");
+                  console.log("");
+                  continue partnerSelectionLoop;
+                }
+                console.log("  Returning to endpoint mode selection.");
+                console.log("");
+                continue;
+              }
+              if (navigation === "exit") {
+                exitOnboardFromPrompt();
+              }
+              endpointUrl = normalizeProviderBaseUrl(endpointInput || defaultEndpointUrl, "openai");
+              if (!endpointUrl) {
+                console.error(`  Base URL is required for ${resolvedSelection.partner.label}.`);
+                if (isNonInteractive()) {
+                  process.exit(1);
+                }
+                console.log("");
+                continue;
+              }
+            }
+
+            if (isNonInteractive()) {
+              if (!getCredential(credentialEnv)) {
+                console.error(
+                  `  ${credentialEnv} is required for ${resolvedSelection.partner.label} in non-interactive mode.`,
+                );
+                process.exit(1);
+              }
+            } else {
+              await ensureNcpCatalogCredential(
+                credentialEnv,
+                resolvedSelection.endpoint.credential,
+              );
+            }
+
+            const selectionLabel = `${resolvedSelection.partner.label} ${resolvedSelection.endpoint.menuLabel}`;
+            const canValidateSelection = canUseGenericNcpValidation(resolvedSelection);
+            while (true) {
+              if (isNonInteractive()) {
+                model = requestedModel;
+                if (!model) {
+                  console.error(
+                    "  NEMOCLAW_MODEL is required for NVIDIA Partner endpoints in non-interactive mode.",
+                  );
+                  process.exit(1);
+                }
+              } else {
+                model = await promptInputModel(selectionLabel, requestedModel || "");
+              }
+              if (model === BACK_TO_SELECTION) {
+                console.log("  Returning to provider selection.");
+                console.log("");
+                continue selectionLoop;
+              }
+
+              if (!canValidateSelection) {
+                console.log(
+                  "  Skipping live validation for this partner endpoint; generic probing currently supports only standard Bearer-auth OpenAI endpoints.",
+                );
+                preferredInferenceApi = null;
+                console.log(
+                  `  Using ${NCP_PROVIDER_LABEL} with partner ${resolvedSelection.partner.label} (${resolvedSelection.endpoint.menuLabel}) and model: ${model}`,
+                );
+                break selectionLoop;
+              }
+
+              const validation = await validateCustomOpenAiLikeSelection(
+                selectionLabel,
+                endpointUrl,
+                model,
+                credentialEnv,
+                resolvedSelection.endpoint.credential.helpUrl,
+                resolvedSelection.endpoint.credential,
+              );
+              if (validation.ok) {
+                preferredInferenceApi = validation.api;
+                console.log(
+                  `  Using ${NCP_PROVIDER_LABEL} with partner ${resolvedSelection.partner.label} (${resolvedSelection.endpoint.menuLabel}) and model: ${model}`,
+                );
+                break selectionLoop;
+              }
+              if (
+                validation.retry === "credential" ||
+                validation.retry === "retry" ||
+                validation.retry === "model"
+              ) {
+                continue;
+              }
+              if (validation.retry === "selection") {
+                continue selectionLoop;
+              }
+            }
+
+            console.log(
+              `  Using ${NCP_PROVIDER_LABEL} with partner ${resolvedSelection.partner.label} (${resolvedSelection.endpoint.menuLabel}) and model: ${model}`,
+            );
+            break selectionLoop;
+          }
+        }
       } else if (selected.key === "nim-local") {
         // List models that fit GPU VRAM
         const models = nim.listModels().filter((m) => m.minGpuMemoryMB <= gpu.totalMemoryMB);
@@ -2819,7 +3213,16 @@ async function setupNim(gpu) {
     }
   }
 
-  return { model, provider, endpointUrl, credentialEnv, preferredInferenceApi, nimContainer };
+  return {
+    model,
+    provider,
+    ncpPartner,
+    ncpEndpointMode,
+    endpointUrl,
+    credentialEnv,
+    preferredInferenceApi,
+    nimContainer,
+  };
 }
 
 // ── Step 4: Inference provider ───────────────────────────────────
@@ -3767,6 +4170,8 @@ async function onboard(opts = {}) {
     let sandboxName = session?.sandboxName || null;
     let model = session?.model || null;
     let provider = session?.provider || null;
+    let ncpPartner = session?.ncpPartner || null;
+    let ncpEndpointMode = session?.ncpEndpointMode || null;
     let endpointUrl = session?.endpointUrl || null;
     let credentialEnv = session?.credentialEnv || null;
     let preferredInferenceApi = session?.preferredInferenceApi || null;
@@ -3779,7 +4184,9 @@ async function onboard(opts = {}) {
         resume &&
         session?.steps?.provider_selection?.status === "complete" &&
         typeof provider === "string" &&
-        typeof model === "string";
+        typeof model === "string" &&
+        (provider !== NCP_SHARED_PROVIDER_ID ||
+          (typeof ncpPartner === "string" && typeof ncpEndpointMode === "string"));
       if (resumeProviderSelection) {
         skippedStepMessage("provider_selection", `${provider} / ${model}`);
         hydrateCredentialEnv(credentialEnv);
@@ -3788,6 +4195,8 @@ async function onboard(opts = {}) {
         const selection = await setupNim(gpu);
         model = selection.model;
         provider = selection.provider;
+        ncpPartner = selection.ncpPartner;
+        ncpEndpointMode = selection.ncpEndpointMode;
         endpointUrl = selection.endpointUrl;
         credentialEnv = selection.credentialEnv;
         preferredInferenceApi = selection.preferredInferenceApi;
@@ -3796,6 +4205,8 @@ async function onboard(opts = {}) {
           sandboxName,
           provider,
           model,
+          ncpPartner,
+          ncpEndpointMode,
           endpointUrl,
           credentialEnv,
           preferredInferenceApi,

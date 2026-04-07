@@ -341,20 +341,23 @@ import subprocess
 import time
 
 OPENCLAW = os.environ.get('OPENCLAW_BIN', 'openclaw')
-DEADLINE = time.time() + 600
+DEADLINE = time.time() + 180
 QUIET_POLLS = 0
 APPROVED = 0
 HANDLED = set()  # Track rejected/approved requestIds to avoid reprocessing
 # SECURITY NOTE: clientId/clientMode are client-supplied and spoofable
 # (the gateway stores connectParams.client.id verbatim). This allowlist
-# is defense-in-depth, not a trust boundary. PR #690 adds one-shot exit,
-# timeout reduction, and token cleanup for a more comprehensive fix.
+# is defense-in-depth, not a trust boundary — real identity validation
+# would need to happen in the gateway itself.
 ALLOWED_CLIENTS = {'openclaw-control-ui'}
 ALLOWED_MODES = {'webchat', 'cli'}
 
 def run(*args):
     proc = subprocess.run(args, capture_output=True, text=True)
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+# Clear stale device tokens from previous sessions
+run(OPENCLAW, 'devices', 'clear', '--yes')
 
 while time.time() < DEADLINE:
     rc, out, err = run(OPENCLAW, 'devices', 'list', '--json')
@@ -384,12 +387,18 @@ while time.time() < DEADLINE:
             if client_id not in ALLOWED_CLIENTS and client_mode not in ALLOWED_MODES:
                 HANDLED.add(request_id)
                 print(f'[auto-pair] rejected unknown client={client_id} mode={client_mode}')
+                run(OPENCLAW, 'devices', 'reject', request_id, '--json')
                 continue
             arc, aout, aerr = run(OPENCLAW, 'devices', 'approve', request_id, '--json')
             HANDLED.add(request_id)
             if arc == 0:
                 APPROVED += 1
                 print(f'[auto-pair] approved request={request_id} client={client_id}')
+                # One-shot: after first approval, shrink deadline and stop
+                # processing further pending requests in this poll
+                if APPROVED == 1:
+                    DEADLINE = time.time() + 5
+                break
             elif aout or aerr:
                 print(f'[auto-pair] approve failed request={request_id}: {(aerr or aout)[:400]}')
         time.sleep(1)
@@ -408,6 +417,8 @@ while time.time() < DEADLINE:
     time.sleep(1)
 else:
     print(f'[auto-pair] watcher timed out approvals={APPROVED}')
+    # Clear any remaining pending requests on timeout
+    run(OPENCLAW, 'devices', 'clear', '--pending', '--yes')
 PYAUTOPAIR
   AUTO_PAIR_PID=$!
   echo "[gateway] auto-pair watcher launched (pid $AUTO_PAIR_PID)" >&2

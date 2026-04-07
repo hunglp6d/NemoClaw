@@ -10,7 +10,7 @@ import {
   runOpenshellCommand,
   stripAnsi,
   versionGte,
-} from "../../dist/lib/openshell";
+} from "./openshell";
 
 describe("openshell helpers", () => {
   it("strips ANSI sequences", () => {
@@ -77,6 +77,44 @@ describe("openshell helpers", () => {
         }) as never,
       }),
     ).toThrow("exit:17");
+  });
+
+  it("treats run spawn failures as fatal errors", () => {
+    const errors: string[] = [];
+    expect(() =>
+      runOpenshellCommand("openshell", ["status"], {
+        spawnSyncImpl: (() => ({
+          status: null,
+          stdout: "",
+          stderr: "",
+          error: new Error("spawn EACCES"),
+        })) as never,
+        errorLine: (message) => errors.push(message),
+        exit: ((code: number) => {
+          throw new Error(`exit:${code}`);
+        }) as never,
+      }),
+    ).toThrow("exit:1");
+    expect(errors).toEqual(["  Failed to start openshell status: spawn EACCES"]);
+  });
+
+  it("treats capture spawn failures as fatal errors", () => {
+    const errors: string[] = [];
+    expect(() =>
+      captureOpenshellCommand("openshell", ["status"], {
+        spawnSyncImpl: (() => ({
+          status: null,
+          stdout: "",
+          stderr: "",
+          error: new Error("spawn ENOENT"),
+        })) as never,
+        errorLine: (message) => errors.push(message),
+        exit: ((code: number) => {
+          throw new Error(`exit:${code}`);
+        }) as never,
+      }),
+    ).toThrow("exit:1");
+    expect(errors).toEqual(["  Failed to start openshell status: spawn ENOENT"]);
   });
 
   it("reads the installed openshell version through the capture helper", () => {

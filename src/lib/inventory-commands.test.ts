@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { listSandboxesCommand, showStatusCommand } from "../../dist/lib/inventory-commands";
+import { listSandboxesCommand, showStatusCommand } from "./inventory-commands";
 
 describe("inventory commands", () => {
   it("prints the empty-state onboarding hint when no sandboxes exist", async () => {
@@ -50,6 +50,41 @@ describe("inventory commands", () => {
     );
   });
 
+  it("uses live inference only for the default sandbox in list output", async () => {
+    const lines: string[] = [];
+    await listSandboxesCommand({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "alpha",
+            model: "configured-alpha",
+            provider: "configured-provider",
+            gpuEnabled: true,
+            policies: [],
+          },
+          {
+            name: "beta",
+            model: "configured-beta",
+            provider: "beta-provider",
+            gpuEnabled: false,
+            policies: [],
+          },
+        ],
+        defaultSandbox: "alpha",
+      }),
+      getLiveInference: () => ({ provider: "live-provider", model: "live-model" }),
+      loadLastSession: () => null,
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain(
+      "      model: live-model  provider: live-provider  GPU  policies: none",
+    );
+    expect(lines).toContain(
+      "      model: configured-beta  provider: beta-provider  CPU  policies: none",
+    );
+  });
+
   it("prints the top-level status inventory and delegates service status", () => {
     const lines: string[] = [];
     const showServiceStatus = vi.fn();
@@ -59,6 +94,10 @@ describe("inventory commands", () => {
           {
             name: "alpha",
             model: "nvidia/nemotron-3-super-120b-a12b",
+          },
+          {
+            name: "beta",
+            model: "z-ai/glm5",
           },
         ],
         defaultSandbox: "alpha",
@@ -70,6 +109,7 @@ describe("inventory commands", () => {
 
     expect(lines).toContain("  Sandboxes:");
     expect(lines).toContain("    alpha * (moonshotai/kimi-k2.5)");
+    expect(lines).toContain("    beta (z-ai/glm5)");
     expect(showServiceStatus).toHaveBeenCalledWith({ sandboxName: "alpha" });
   });
 });

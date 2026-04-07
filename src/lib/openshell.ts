@@ -7,21 +7,21 @@ import {
   type SpawnSyncReturns,
 } from "node:child_process";
 
-export interface RunOpenshellOptions {
+interface OpenshellSpawnOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  stdio?: SpawnSyncOptions["stdio"];
-  ignoreError?: boolean;
   spawnSyncImpl?: typeof spawnSync;
   errorLine?: (message: string) => void;
   exit?: (code: number) => never;
 }
 
-export interface CaptureOpenshellOptions {
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
+export interface RunOpenshellOptions extends OpenshellSpawnOptions {
+  stdio?: SpawnSyncOptions["stdio"];
   ignoreError?: boolean;
-  spawnSyncImpl?: typeof spawnSync;
+}
+
+export interface CaptureOpenshellOptions extends OpenshellSpawnOptions {
+  ignoreError?: boolean;
 }
 
 export interface CaptureOpenshellResult {
@@ -58,6 +58,17 @@ export function versionGte(left = "0.0.0", right = "0.0.0"): boolean {
   return true;
 }
 
+function handleSpawnError(
+  binary: string,
+  args: string[],
+  error: Error,
+  opts: OpenshellSpawnOptions,
+): never {
+  const command = [binary, ...args].join(" ");
+  (opts.errorLine ?? console.error)(`  Failed to start ${command}: ${error.message}`);
+  return (opts.exit ?? ((code) => process.exit(code)))(1);
+}
+
 export function runOpenshellCommand(
   binary: string,
   args: string[],
@@ -70,6 +81,9 @@ export function runOpenshellCommand(
     encoding: "utf-8",
     stdio: opts.stdio ?? "inherit",
   });
+  if (result.error) {
+    return handleSpawnError(binary, args, result.error, opts);
+  }
   if (result.status !== 0 && !opts.ignoreError) {
     (opts.errorLine ?? console.error)(
       `  Command failed (exit ${result.status}): openshell ${args.join(" ")}`,
@@ -91,6 +105,9 @@ export function captureOpenshellCommand(
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+  if (result.error) {
+    return handleSpawnError(binary, args, result.error, opts);
+  }
   return {
     status: result.status ?? 1,
     output: `${result.stdout || ""}${opts.ignoreError ? "" : result.stderr || ""}`.trim(),

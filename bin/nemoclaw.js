@@ -93,7 +93,7 @@ function getOpenshellBinary() {
 function runOpenshell(args, opts = {}) {
   return runOpenshellCommand(getOpenshellBinary(), args, {
     cwd: ROOT,
-    env: { ...process.env, ...opts.env },
+    env: opts.env,
     stdio: opts.stdio,
     ignoreError: opts.ignoreError,
     errorLine: console.error,
@@ -104,8 +104,10 @@ function runOpenshell(args, opts = {}) {
 function captureOpenshell(args, opts = {}) {
   return captureOpenshellCommand(getOpenshellBinary(), args, {
     cwd: ROOT,
-    env: { ...process.env, ...opts.env },
+    env: opts.env,
     ignoreError: opts.ignoreError,
+    errorLine: console.error,
+    exit: (code) => process.exit(code),
   });
 }
 
@@ -143,7 +145,6 @@ function getSandboxDeleteOutcome(deleteResult) {
 function getInstalledOpenshellVersionOrNull() {
   return getInstalledOpenshellVersion(getOpenshellBinary(), {
     cwd: ROOT,
-    env: process.env,
   });
 }
 

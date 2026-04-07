@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { GatewayInference } from "./inference-config";
+
 export interface SandboxEntry {
   name: string;
   model?: string | null;
@@ -14,11 +16,6 @@ export interface RecoveryResult {
   defaultSandbox?: string | null;
   recoveredFromSession?: boolean;
   recoveredFromGateway?: number;
-}
-
-export interface GatewayInference {
-  provider: string | null;
-  model: string | null;
 }
 
 export interface ListSandboxesCommandDeps {
@@ -71,9 +68,10 @@ export async function listSandboxesCommand(deps: ListSandboxesCommandDeps): Prom
   }
   log("  Sandboxes:");
   for (const sb of sandboxes) {
-    const def = sb.name === defaultSandbox ? " *" : "";
-    const model = (live && live.model) || sb.model || "unknown";
-    const provider = (live && live.provider) || sb.provider || "unknown";
+    const isDefault = sb.name === defaultSandbox;
+    const def = isDefault ? " *" : "";
+    const model = (isDefault && live?.model) || sb.model || "unknown";
+    const provider = (isDefault && live?.provider) || sb.provider || "unknown";
     const gpu = sb.gpuEnabled ? "GPU" : "CPU";
     const presets = sb.policies && sb.policies.length > 0 ? sb.policies.join(", ") : "none";
     log(`    ${sb.name}${def}`);
@@ -92,8 +90,9 @@ export function showStatusCommand(deps: ShowStatusCommandDeps): void {
     log("");
     log("  Sandboxes:");
     for (const sb of sandboxes) {
-      const def = sb.name === defaultSandbox ? " *" : "";
-      const model = (live && live.model) || sb.model;
+      const isDefault = sb.name === defaultSandbox;
+      const def = isDefault ? " *" : "";
+      const model = (isDefault && live?.model) || sb.model;
       log(`    ${sb.name}${def}${model ? ` (${model})` : ""}`);
     }
     log("");

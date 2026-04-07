@@ -1501,7 +1501,7 @@ console.log(JSON.stringify({ liveExists, sandbox: registry.getSandbox("my-assist
         runner.runCapture = (command) => {
           if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
           if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-          if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) {
+          if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) {
             return "ok";
           }
           if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
@@ -1602,7 +1602,7 @@ console.log(JSON.stringify({ liveExists, sandbox: registry.getSandbox("my-assist
         runner.runCapture = (command) => {
           if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
           if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-          if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) {
+          if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) {
             return "ok";
           }
           if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
@@ -2333,7 +2333,7 @@ console.log(JSON.stringify({ exists: providerExistsInGateway("nonexistent") }));
             sandboxListCalls += 1;
             return sandboxListCalls >= 2 ? "my-assistant Ready" : "my-assistant Pending";
           }
-          if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) {
+          if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) {
             return "ok";
           }
           if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
@@ -2689,7 +2689,7 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-  if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
+  if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) return "ok";
   if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
@@ -2816,7 +2816,7 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-  if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
+  if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) return "ok";
   if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
@@ -3078,7 +3078,7 @@ const { setupMessagingChannels } = require(${onboardPath});
         runner.runCapture = (command) => {
           if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
           if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-          if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) {
+          if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) {
             return "ok";
           }
           if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";

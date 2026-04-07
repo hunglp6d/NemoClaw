@@ -21,6 +21,7 @@ describe("onboard command", () => {
     ).toEqual({
       nonInteractive: true,
       resume: true,
+      fromDockerfile: null,
       acceptThirdPartySoftware: true,
     });
   });
@@ -42,6 +43,7 @@ describe("onboard command", () => {
     ).toEqual({
       nonInteractive: false,
       resume: false,
+      fromDockerfile: null,
       acceptThirdPartySoftware: true,
     });
   });
@@ -62,8 +64,48 @@ describe("onboard command", () => {
     expect(runOnboard).toHaveBeenCalledWith({
       nonInteractive: false,
       resume: true,
+      fromDockerfile: null,
       acceptThirdPartySoftware: false,
     });
+  });
+
+  it("parses --from <Dockerfile>", () => {
+    expect(
+      parseOnboardArgs(
+        ["--resume", "--from", "/tmp/Custom.Dockerfile"],
+        "--yes-i-accept-third-party-software",
+        "NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE",
+        {
+          env: {},
+          error: () => {},
+          exit: ((code: number) => {
+            throw new Error(String(code));
+          }) as never,
+        },
+      ),
+    ).toEqual({
+      nonInteractive: false,
+      resume: true,
+      fromDockerfile: "/tmp/Custom.Dockerfile",
+      acceptThirdPartySoftware: false,
+    });
+  });
+
+  it("exits when --from is missing its Dockerfile path", () => {
+    expect(() =>
+      parseOnboardArgs(
+        ["--from"],
+        "--yes-i-accept-third-party-software",
+        "NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE",
+        {
+          env: {},
+          error: () => {},
+          exit: ((code: number) => {
+            throw new Error(`exit:${code}`);
+          }) as never,
+        },
+      ),
+    ).toThrow("exit:1");
   });
 
   it("prints the setup-spark deprecation text before delegating", async () => {

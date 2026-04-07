@@ -4,6 +4,7 @@
 export interface OnboardCommandOptions {
   nonInteractive: boolean;
   resume: boolean;
+  fromDockerfile: string | null;
   acceptThirdPartySoftware: boolean;
 }
 
@@ -20,6 +21,10 @@ export interface RunOnboardCommandDeps {
 
 const ONBOARD_BASE_ARGS = ["--non-interactive", "--resume"];
 
+function onboardUsage(noticeAcceptFlag: string): string {
+  return `  Usage: nemoclaw onboard [--non-interactive] [--resume] [--from <Dockerfile>] [${noticeAcceptFlag}]`;
+}
+
 export function parseOnboardArgs(
   args: string[],
   noticeAcceptFlag: string,
@@ -28,19 +33,30 @@ export function parseOnboardArgs(
 ): OnboardCommandOptions {
   const error = deps.error ?? console.error;
   const exit = deps.exit ?? ((code: number) => process.exit(code));
+  let fromDockerfile: string | null = null;
+  const fromIdx = args.indexOf("--from");
+  if (fromIdx !== -1) {
+    fromDockerfile = args[fromIdx + 1] || null;
+    if (!fromDockerfile || fromDockerfile.startsWith("--")) {
+      error("  --from requires a path to a Dockerfile");
+      error(onboardUsage(noticeAcceptFlag));
+      exit(1);
+    }
+    args = [...args.slice(0, fromIdx), ...args.slice(fromIdx + 2)];
+  }
+
   const allowedArgs = new Set([...ONBOARD_BASE_ARGS, noticeAcceptFlag]);
   const unknownArgs = args.filter((arg) => !allowedArgs.has(arg));
   if (unknownArgs.length > 0) {
     error(`  Unknown onboard option(s): ${unknownArgs.join(", ")}`);
-    error(
-      `  Usage: nemoclaw onboard [--non-interactive] [--resume] [${noticeAcceptFlag}]`,
-    );
+    error(onboardUsage(noticeAcceptFlag));
     exit(1);
   }
 
   return {
     nonInteractive: args.includes("--non-interactive"),
     resume: args.includes("--resume"),
+    fromDockerfile,
     acceptThirdPartySoftware:
       args.includes(noticeAcceptFlag) || String(deps.env[noticeAcceptEnv] || "") === "1",
   };

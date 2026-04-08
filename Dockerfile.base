@@ -150,9 +150,8 @@ RUN printf '%s\n' \
 ARG OPENCLAW_VERSION=2026.3.11
 
 RUN --mount=type=bind,source=nemoclaw-blueprint/blueprint.yaml,target=/tmp/blueprint.yaml \
-    v="$OPENCLAW_VERSION"; \
-    echo "$v" | grep -qxE '[0-9]+(\.[0-9]+)*' \
-    || { echo "Error: OPENCLAW_VERSION='$v' is invalid (expected e.g. 2026.3.11)."; exit 1; }; \
+    echo "$OPENCLAW_VERSION" | grep -qxE '[0-9]+(\.[0-9]+)*' \
+    || { echo "Error: OPENCLAW_VERSION='$OPENCLAW_VERSION' is invalid (expected e.g. 2026.3.11)."; exit 1; }; \
     OPENCLAW_MIN_VERSION=$(grep 'min_openclaw_version' /tmp/blueprint.yaml | awk '{print $2}' | tr -d '"') \
     && if [ "$(printf '%s\n%s' "$OPENCLAW_MIN_VERSION" "$OPENCLAW_VERSION" | sort -V | head -n1)" != "$OPENCLAW_MIN_VERSION" ]; then \
         echo "Error: OpenClaw version ${OPENCLAW_VERSION} is below the minimum required version ${OPENCLAW_MIN_VERSION}"; \

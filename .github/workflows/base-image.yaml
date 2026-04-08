@@ -19,6 +19,11 @@ on:
     paths:
       - "Dockerfile.base"
   workflow_dispatch:
+    inputs:
+      openclaw_version:
+        description: "OpenClaw version to install (leave blank for default 2026.3.11)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -74,3 +79,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            OPENCLAW_VERSION=${{ inputs.openclaw_version || '2026.3.11' }}

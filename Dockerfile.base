@@ -145,5 +145,16 @@ RUN printf '%s\n' \
 
 # Install OpenClaw CLI + PyYAML for inline Python scripts in e2e tests.
 # When bumping the openclaw version, rebuild this base image.
-RUN npm install -g openclaw@2026.3.11 \
+ARG OPENCLAW_VERSION=2026.3.11
+RUN --mount=type=bind,source=nemoclaw-blueprint/blueprint.yaml,target=/tmp/blueprint.yaml \
+    OPENCLAW_MIN_VERSION=$(grep 'min_openclaw_version' /tmp/blueprint.yaml | awk '{print $2}' | tr -d '"') \
+    && if [ "$(printf '%s\n%s' "$OPENCLAW_MIN_VERSION" "$OPENCLAW_VERSION" | sort -V | head -n1)" != "$OPENCLAW_MIN_VERSION" ]; then \
+        echo "Error: OpenClaw version ${OPENCLAW_VERSION} is below the minimum required version ${OPENCLAW_MIN_VERSION}"; \
+        echo "Hint: Update min_openclaw_version in nemoclaw-blueprint/blueprint.yaml or use a newer version."; exit 1; \
+    fi \
+    && if ! npm view openclaw@${OPENCLAW_VERSION} version > /dev/null 2>&1; then \
+        echo "Error: OpenClaw version ${OPENCLAW_VERSION} not found on npm registry"; \
+        echo "Hint: Check available versions with: npm view openclaw versions"; exit 1; \
+    fi \
+    && npm install -g openclaw@${OPENCLAW_VERSION} \
     && pip3 install --no-cache-dir --break-system-packages "pyyaml==6.0.3"

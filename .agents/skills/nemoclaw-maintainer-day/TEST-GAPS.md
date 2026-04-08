@@ -1,14 +1,8 @@
----
-name: nemoclaw-maintainer-test-gaps
-description: Finds and closes the highest-value NemoClaw test gaps around risky changed code, recent regressions, and churn-heavy areas. Adds focused tests in the correct location, prefers narrow seams over broad rewrites. Use when testing is falling behind, a PR touches risky code without tests, or recurring regressions need coverage. Trigger keywords - test gaps, add tests, coverage gap, risky code tests, missing tests, regression test.
-user_invocable: true
----
-
-# NemoClaw Maintainer Test Gaps
+# Test Gaps Workflow
 
 Close the highest-value test gaps without turning the task into a rewrite.
 
-For risky code areas, see [RISKY-AREAS.md](../nemoclaw-maintainer-loop/RISKY-AREAS.md).
+For risky code areas, see [RISKY-AREAS.md](RISKY-AREAS.md).
 
 ## Step 1: Collect File Set
 
@@ -64,12 +58,8 @@ Narrowest command set that gives confidence.
 
 If untested risk remains, say so: no clean seam without larger refactor, too much hidden shell state, missing fixture strategy, flaky infra dependency.
 
-## Step 8: Update State
-
-Record in `.nemoclaw-maintainer/state.json`: files reviewed, tests added, tests still missing, tie to PR/hotspot/regression.
-
 ## Notes
 
 - Tests for risky code are merge readiness, not polish.
 - One precise regression test beats many vague integration checks.
-- If credible fix needs bigger redesign, route to `nemoclaw-maintainer-sequence-work`.
+- If credible fix needs bigger redesign, follow [SEQUENCE-WORK.md](SEQUENCE-WORK.md).

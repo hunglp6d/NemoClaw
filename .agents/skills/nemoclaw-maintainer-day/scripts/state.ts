@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * State file manager for the NemoClaw maintainer loop.
+ * State file manager for the NemoClaw maintainer skills.
  *
  * Subcommands:
  *   init                          Create state file and .git/info/exclude entry
@@ -13,7 +13,7 @@
  *   set-queue <json>              Update queue from triage output (pipe JSON to stdin)
  *   set-hotspots <json>           Update hotspots from hotspot output (pipe JSON to stdin)
  *
- * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-loop/scripts/state.ts <subcommand> [args]
+ * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-day/scripts/state.ts <subcommand> [args]
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
@@ -169,7 +169,6 @@ function cmdHistory(action: string, item: string, note: string): void {
     action,
     note,
   });
-  // Keep history under 50 entries
   if (state.history.length > 50) {
     state.history = state.history.slice(-50);
   }

@@ -8,12 +8,24 @@
  * file-level risky-area detection, applies scoring weights, filters
  * exclusions from the state file, and outputs a ranked JSON queue.
  *
- * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-loop/scripts/triage.ts [--limit N] [--approved-only]
+ * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-day/scripts/triage.ts [--limit N] [--approved-only]
  */
 
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import {
+  isRiskyFile,
+  run,
+  SCORE_MERGE_NOW,
+  SCORE_NEAR_MISS,
+  SCORE_SECURITY_ACTIONABLE,
+  SCORE_STALE_AGE,
+  PENALTY_DRAFT_OR_CONFLICT,
+  PENALTY_CODERABBIT_MAJOR,
+  PENALTY_BROAD_CI_RED,
+  PENALTY_MERGE_BLOCKED,
+} from "./shared.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,10 +54,6 @@ interface MergeNowOutput {
   near_miss: MergeNowItem[];
   excluded: MergeNowItem[];
   excluded_reason_counts: Record<string, number>;
-}
-
-interface PrFiles {
-  files: Array<{ path: string }>;
 }
 
 interface StateFile {
@@ -86,49 +94,17 @@ interface TriageOutput {
 }
 
 // ---------------------------------------------------------------------------
-// Risky area patterns
-// ---------------------------------------------------------------------------
-
-const RISKY_PATTERNS: RegExp[] = [
-  /^install\.sh$/,
-  /^setup\.sh$/,
-  /^brev-setup\.sh$/,
-  /^scripts\/.*\.sh$/,
-  /^bin\/lib\/onboard\.js$/,
-  /^bin\/.*\.js$/,
-  /^nemoclaw\/src\/blueprint\//,
-  /^nemoclaw-blueprint\//,
-  /^\.github\/workflows\//,
-  /\.prek\./,
-  /policy/i,
-  /ssrf/i,
-  /credential/i,
-  /inference/i,
-];
-
-function isRiskyFile(path: string): boolean {
-  return RISKY_PATTERNS.some((re) => re.test(path));
-}
-
-// ---------------------------------------------------------------------------
 // Shell helpers
 // ---------------------------------------------------------------------------
 
-function run(cmd: string, args: string[]): string {
-  try {
-    return execFileSync(cmd, args, {
-      encoding: "utf-8",
-      timeout: 120_000,
-      maxBuffer: 10 * 1024 * 1024,
-    }).trim();
-  } catch {
-    return "";
-  }
-}
-
 function ghApi(path: string): unknown {
   const out = run("gh", ["api", path]);
-  return out ? JSON.parse(out) : null;
+  if (!out) return null;
+  try {
+    return JSON.parse(out);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,35 +156,32 @@ function scoreItem(
   let nextAction = "review";
 
   if (item.merge_now) {
-    score += 40;
+    score += SCORE_MERGE_NOW;
     bucket = "ready-now";
     nextAction = "merge-gate";
   } else if (item.near_miss) {
-    score += 30;
+    score += SCORE_NEAR_MISS;
     bucket = "salvage-now";
     nextAction = "salvage-pr";
   }
 
-  // Security / risky area bonus (only if actionable)
   if (riskyFiles.length > 0 && bucket !== "blocked") {
-    score += 20;
+    score += SCORE_SECURITY_ACTIONABLE;
     nextAction = bucket === "ready-now" ? "security-sweep → merge-gate" : "security-sweep → salvage-pr";
   }
 
-  // Age bonus: +5 if updated > 7 days ago
   if (item.updated_at) {
     const age = Date.now() - new Date(item.updated_at).getTime();
-    if (age > 7 * 24 * 60 * 60 * 1000) score += 5;
+    if (age > 7 * 24 * 60 * 60 * 1000) score += SCORE_STALE_AGE;
   }
 
-  // Negative weights
   const reasons = new Set(item.reasons);
-  if (item.draft) score -= 100;
-  if (reasons.has("merge-conflict")) score -= 100;
-  if (item.coderabbit.major > 0) score -= 80;
-  if (item.coderabbit.critical > 0) score -= 80;
-  if (reasons.has("failing-checks") && !item.near_miss) score -= 60;
-  if (reasons.has("merge-blocked")) score -= 20;
+  if (item.draft) score += PENALTY_DRAFT_OR_CONFLICT;
+  if (reasons.has("merge-conflict")) score += PENALTY_DRAFT_OR_CONFLICT;
+  if (item.coderabbit.major > 0) score += PENALTY_CODERABBIT_MAJOR;
+  if (item.coderabbit.critical > 0) score += PENALTY_CODERABBIT_MAJOR;
+  if (reasons.has("failing-checks") && !item.near_miss) score += PENALTY_BROAD_CI_RED;
+  if (reasons.has("merge-blocked")) score += PENALTY_MERGE_BLOCKED;
 
   return { score, bucket, nextAction };
 }
@@ -256,10 +229,8 @@ function main(): void {
   const limitIdx = args.indexOf("--limit");
   const limit = limitIdx >= 0 ? parseInt(args[limitIdx + 1], 10) : 10;
 
-  // 1. Run gh-pr-merge-now
   let data = runMergeNow(approvedOnly);
   if (!data && approvedOnly) {
-    // Fallback to full scan
     data = runMergeNow(false);
   }
   if (!data) {
@@ -267,18 +238,15 @@ function main(): void {
     process.exit(1);
   }
 
-  // 2. Load exclusions
   const state = loadState();
   const excludedPrs = new Set(
     Object.keys(state?.excluded?.prs ?? {}).map(Number),
   );
 
-  // 3. Merge all items and filter exclusions
   const allItems = [...data.merge_now, ...data.near_miss, ...data.excluded].filter(
     (item) => !excludedPrs.has(item.number),
   );
 
-  // 4. Enrich top candidates with file data and scoring
   const fileCache = new Map<number, string[]>();
   const topCandidates = allItems
     .filter((item) => item.merge_now || item.near_miss)
@@ -307,17 +275,14 @@ function main(): void {
     });
   }
 
-  // 5. Sort and rank
   scored.sort((a, b) => b.score - a.score);
   const queue = scored.filter((s) => s.bucket === "ready-now").slice(0, limit);
   const nearMisses = scored.filter((s) => s.bucket === "salvage-now").slice(0, limit);
   queue.forEach((item, i) => (item.rank = i + 1));
   nearMisses.forEach((item, i) => (item.rank = i + 1));
 
-  // 6. Detect hot clusters
   const hotClusters = detectHotClusters(allItems.slice(0, 30), data.repo, fileCache);
 
-  // 7. Output
   const output: TriageOutput = {
     generatedAt: new Date().toISOString(),
     repo: data.repo,

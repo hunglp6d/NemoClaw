@@ -1,10 +1,4 @@
----
-name: nemoclaw-maintainer-salvage-pr
-description: Rescues a near-mergeable NemoClaw PR by gathering full context, landing the smallest safe fix set, adding focused tests for touched risky code, pushing updates, and routing through the merge gate. Use when a contributor PR is close but blocked on CI, a small review fix, or a narrow conflict. Trigger keywords - rescue PR, salvage PR, fix contributor PR, make CI green, push maintainer fix, unblock PR.
-user_invocable: true
----
-
-# NemoClaw Maintainer PR Salvage
+# Salvage PR Workflow
 
 Take one near-mergeable PR and make the smallest safe change to unblock it.
 
@@ -42,13 +36,13 @@ Before fixing, review **all** changed files in the PR — not just the ones caus
 
 Smallest change that clears the blocker. No opportunistic reformatting.
 
-If risky code is touched (see [RISKY-AREAS.md](../nemoclaw-maintainer-loop/RISKY-AREAS.md)), treat missing tests as part of the fix — load `nemoclaw-maintainer-test-gaps` when needed.
+If risky code is touched (see [RISKY-AREAS.md](RISKY-AREAS.md)), treat missing tests as part of the fix — follow [TEST-GAPS.md](TEST-GAPS.md) when needed.
 
-## Step 5: Conflicts
+## Step 6: Conflicts
 
 Resolve only mechanical conflicts (import ordering, adjacent additions, branch drift). Stop and summarize if the conflict changes behavior.
 
-## Step 6: Validate
+## Step 7: Validate
 
 ```bash
 npm test                          # root integration tests
@@ -59,7 +53,7 @@ make check                        # all linters
 
 Use only commands matching the changed area.
 
-## Step 7: Push
+## Step 8: Push
 
 Push when: fix is small, improves mergeability, validation passed, you have push permission. Never force-push. If you cannot push, prepare a comment describing the fix.
 
@@ -77,13 +71,9 @@ git push git@github.com:<owner>/<repo>.git <local-branch>:<headRefName>
 
 Do **not** push to `origin` — that creates a separate branch on NVIDIA/NemoClaw that won't appear in the PR.
 
-## Step 8: Route to Merge Gate
+## Step 9: Route to Merge Gate
 
-If PR looks ready, load `nemoclaw-maintainer-merge-gate`.
-
-## Step 9: Update State
-
-Record in `.nemoclaw-maintainer/state.json`: PR URL, blocker fixed, tests added/run, push status, advancement to merge gate.
+If PR looks ready, follow [MERGE-GATE.md](MERGE-GATE.md).
 
 ## Notes
 

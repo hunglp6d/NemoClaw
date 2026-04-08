@@ -7,10 +7,10 @@
  * Checks all 4 required gates and outputs structured JSON.
  * Claude uses the output to decide: approve, route to salvage, or report blockers.
  *
- * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-loop/scripts/check-gates.ts <pr-number> [--repo OWNER/REPO]
+ * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-day/scripts/check-gates.ts <pr-number> [--repo OWNER/REPO]
  */
 
-import { execFileSync } from "node:child_process";
+import { isRiskyFile, isTestFile, run, ghJson } from "./shared.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,62 +39,6 @@ interface GateOutput {
     coderabbit: GateResult & { unresolvedThreads?: CodeRabbitThread[] };
     riskyCodeTested: GateResult & { riskyFiles?: string[]; hasTests?: boolean };
   };
-}
-
-// ---------------------------------------------------------------------------
-// Risky area patterns (same as triage.ts)
-// ---------------------------------------------------------------------------
-
-const RISKY_PATTERNS: RegExp[] = [
-  /^install\.sh$/,
-  /^setup\.sh$/,
-  /^brev-setup\.sh$/,
-  /^scripts\/.*\.sh$/,
-  /^bin\/lib\/onboard\.js$/,
-  /^bin\/.*\.js$/,
-  /^nemoclaw\/src\/blueprint\//,
-  /^nemoclaw-blueprint\//,
-  /^\.github\/workflows\//,
-  /\.prek\./,
-  /policy/i,
-  /ssrf/i,
-  /credential/i,
-  /inference/i,
-];
-
-const TEST_PATTERNS: RegExp[] = [
-  /\.test\.[jt]sx?$/,
-  /\.spec\.[jt]sx?$/,
-  /^test\//,
-];
-
-function isRiskyFile(path: string): boolean {
-  return RISKY_PATTERNS.some((re) => re.test(path));
-}
-
-function isTestFile(path: string): boolean {
-  return TEST_PATTERNS.some((re) => re.test(path));
-}
-
-// ---------------------------------------------------------------------------
-// Shell helpers
-// ---------------------------------------------------------------------------
-
-function run(cmd: string, args: string[]): string {
-  try {
-    return execFileSync(cmd, args, {
-      encoding: "utf-8",
-      timeout: 60_000,
-      maxBuffer: 10 * 1024 * 1024,
-    }).trim();
-  } catch {
-    return "";
-  }
-}
-
-function ghJson(args: string[]): unknown {
-  const out = run("gh", args);
-  return out ? JSON.parse(out) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +128,6 @@ function checkCodeRabbit(
   repo: string,
   number: number,
 ): GateResult & { unresolvedThreads?: CodeRabbitThread[] } {
-  // Use GraphQL to get review threads with resolution status
   const query = `query($owner:String!, $repo:String!, $number:Int!) {
     repository(owner:$owner, name:$repo) {
       pullRequest(number:$number) {
@@ -209,8 +152,9 @@ function checkCodeRabbit(
     "-f", `query=${query}`,
   ]);
 
+  // Fail-closed: if we cannot reach the API, do not assume clean
   if (!out) {
-    return { pass: true, details: "Could not fetch review threads (assuming clean)" };
+    return { pass: false, details: "Could not fetch review threads (API error — fail-closed)" };
   }
 
   let data: {
@@ -230,7 +174,7 @@ function checkCodeRabbit(
   try {
     data = JSON.parse(out);
   } catch {
-    return { pass: true, details: "Could not parse review threads" };
+    return { pass: false, details: "Could not parse review threads (invalid JSON — fail-closed)" };
   }
 
   const threads = data.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
@@ -313,7 +257,6 @@ function main(): void {
   const repoIdx = args.indexOf("--repo");
   const repo = repoIdx >= 0 ? args[repoIdx + 1] : "NVIDIA/NemoClaw";
 
-  // Fetch PR data
   const prData = ghJson([
     "pr", "view", String(prNumber),
     "--repo", repo,
@@ -332,7 +275,6 @@ function main(): void {
     process.exit(1);
   }
 
-  // Run all gates
   const ci = checkCi(prData.statusCheckRollup);
   const conflicts = checkConflicts(prData.mergeStateStatus);
   const coderabbit = checkCodeRabbit(repo, prNumber);

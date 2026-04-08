@@ -1,0 +1,112 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+/**
+ * Shared utilities for NemoClaw maintainer scripts.
+ *
+ * Centralizes risky-area detection, test-file detection, and shell helpers
+ * so that triage, check-gates, and hotspots stay in sync.
+ */
+
+import { execFileSync } from "node:child_process";
+
+// ---------------------------------------------------------------------------
+// Risky area patterns — paths that need tests before approval
+// ---------------------------------------------------------------------------
+
+export const RISKY_PATTERNS: RegExp[] = [
+  /^install\.sh$/,
+  /^setup\.sh$/,
+  /^brev-setup\.sh$/,
+  /^scripts\/.*\.sh$/,
+  /^bin\/lib\/onboard\.js$/,
+  /^bin\/.*\.js$/,
+  /^nemoclaw\/src\/blueprint\//,
+  /^nemoclaw-blueprint\//,
+  /^\.github\/workflows\//,
+  /\.prek\./,
+  /policy/i,
+  /ssrf/i,
+  /credential/i,
+  /inference/i,
+];
+
+export const TEST_PATTERNS: RegExp[] = [
+  /\.test\.[jt]sx?$/,
+  /\.spec\.[jt]sx?$/,
+  /^test\//,
+];
+
+export function isRiskyFile(path: string): boolean {
+  return RISKY_PATTERNS.some((re) => re.test(path));
+}
+
+export function isTestFile(path: string): boolean {
+  return TEST_PATTERNS.some((re) => re.test(path));
+}
+
+// ---------------------------------------------------------------------------
+// Shell helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a command and return its stdout. On failure, logs the error to stderr
+ * and returns an empty string so callers can handle the absence of data.
+ */
+export function run(
+  cmd: string,
+  args: string[],
+  timeoutMs = 120_000,
+): string {
+  try {
+    return execFileSync(cmd, args, {
+      encoding: "utf-8",
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+    }).trim();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[shared] ${cmd} ${args[0] ?? ""} failed: ${message}\n`);
+    return "";
+  }
+}
+
+/**
+ * Run `gh` with the given args and parse the JSON output.
+ * Returns null when the command fails or output is not valid JSON.
+ */
+export function ghJson(args: string[]): unknown {
+  const out = run("gh", args);
+  if (!out) return null;
+  try {
+    return JSON.parse(out);
+  } catch {
+    process.stderr.write(`[shared] gh JSON parse failed for: gh ${args.join(" ")}\n`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Triage scoring weights
+//
+// Each weight reflects relative priority in the maintainer queue.
+// Documented in nemoclaw-maintainer-day/PR-REVIEW-PRIORITIES.md.
+// ---------------------------------------------------------------------------
+
+/** PR passed all checks and only needs maintainer review */
+export const SCORE_MERGE_NOW = 40;
+/** PR is close to ready with a clear small fix path */
+export const SCORE_NEAR_MISS = 30;
+/** PR touches security-sensitive code and is actionable */
+export const SCORE_SECURITY_ACTIONABLE = 20;
+/** PR has been stale > 7 days — mild priority bump to prevent rot */
+export const SCORE_STALE_AGE = 5;
+
+/** Draft PRs or PRs with non-trivial merge conflicts are effectively blocked */
+export const PENALTY_DRAFT_OR_CONFLICT = -100;
+/** Unresolved major/critical CodeRabbit finding blocks approval */
+export const PENALTY_CODERABBIT_MAJOR = -80;
+/** Broad CI red with no obvious local fix — not worth salvaging yet */
+export const PENALTY_BROAD_CI_RED = -60;
+/** Blocked on external admin action (permissions, secrets, etc.) */
+export const PENALTY_MERGE_BLOCKED = -20;

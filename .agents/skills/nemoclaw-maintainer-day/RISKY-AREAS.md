@@ -1,6 +1,6 @@
 # NemoClaw Risky Code Areas
 
-PRs touching these areas need tests before approval. This list is shared across all maintainer skills.
+PRs touching these areas need tests before approval.
 
 | Area | Key paths |
 |------|-----------|
@@ -11,4 +11,4 @@ PRs touching these areas need tests before approval. This list is shared across 
 | Credentials / inference / network | credential helpers, inference provider routing, approval flows |
 
 A PR in a risky area is only promoted in the queue when it is actually actionable.
-If risky and under-tested, route to `nemoclaw-maintainer-test-gaps` or `nemoclaw-maintainer-security-sweep`.
+If risky and under-tested, follow the test gaps or security sweep workflows.

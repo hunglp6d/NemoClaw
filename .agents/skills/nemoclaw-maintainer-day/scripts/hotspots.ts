@@ -7,10 +7,10 @@
  * Combines 30-day git churn on main with open PR file overlap to rank
  * the files causing the most merge pain. Outputs structured JSON.
  *
- * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-loop/scripts/hotspots.ts [--days N] [--repo OWNER/REPO]
+ * Usage: node --experimental-strip-types --no-warnings .agents/skills/nemoclaw-maintainer-day/scripts/hotspots.ts [--days N] [--repo OWNER/REPO]
  */
 
-import { execFileSync } from "node:child_process";
+import { isRiskyFile, run } from "./shared.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,47 +29,6 @@ interface HotspotOutput {
   repo: string;
   days: number;
   hotspots: Hotspot[];
-}
-
-// ---------------------------------------------------------------------------
-// Risky area patterns
-// ---------------------------------------------------------------------------
-
-const RISKY_PATTERNS: RegExp[] = [
-  /^install\.sh$/,
-  /^setup\.sh$/,
-  /^brev-setup\.sh$/,
-  /^scripts\/.*\.sh$/,
-  /^bin\/lib\/onboard\.js$/,
-  /^bin\/.*\.js$/,
-  /^nemoclaw\/src\/blueprint\//,
-  /^nemoclaw-blueprint\//,
-  /^\.github\/workflows\//,
-  /\.prek\./,
-  /policy/i,
-  /ssrf/i,
-  /credential/i,
-  /inference/i,
-];
-
-function isRiskyFile(path: string): boolean {
-  return RISKY_PATTERNS.some((re) => re.test(path));
-}
-
-// ---------------------------------------------------------------------------
-// Shell helpers
-// ---------------------------------------------------------------------------
-
-function run(cmd: string, args: string[]): string {
-  try {
-    return execFileSync(cmd, args, {
-      encoding: "utf-8",
-      timeout: 120_000,
-      maxBuffer: 10 * 1024 * 1024,
-    }).trim();
-  } catch {
-    return "";
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +57,6 @@ function gitChurn(days: number): Map<string, number> {
 }
 
 function openPrFileOverlap(repo: string): Map<string, number> {
-  // Get open PR numbers
   const prListOut = run("gh", [
     "pr", "list",
     "--repo", repo,
@@ -117,7 +75,6 @@ function openPrFileOverlap(repo: string): Map<string, number> {
     return counts;
   }
 
-  // Sample up to 50 PRs for file data (API rate limit friendly)
   const sample = prs.slice(0, 50);
   for (const pr of sample) {
     const filesOut = run("gh", [
@@ -163,7 +120,6 @@ function main(): void {
   process.stderr.write("Collecting open PR file overlap...\n");
   const prOverlap = openPrFileOverlap(repo);
 
-  // Merge signals
   const allPaths = new Set([...churn.keys(), ...prOverlap.keys()]);
   const hotspots: Hotspot[] = [];
 
@@ -171,7 +127,6 @@ function main(): void {
     const mainTouchCount = churn.get(path) ?? 0;
     const openPrCount = prOverlap.get(path) ?? 0;
 
-    // Only include files with meaningful signal
     if (mainTouchCount < 2 && openPrCount < 2) continue;
 
     const risky = isRiskyFile(path);
@@ -179,13 +134,7 @@ function main(): void {
     const combinedScore =
       mainTouchCount + openPrCount * 3 + (risky ? (mainTouchCount + openPrCount) * 2 : 0);
 
-    hotspots.push({
-      path,
-      mainTouchCount,
-      openPrCount,
-      combinedScore,
-      isRisky: risky,
-    });
+    hotspots.push({ path, mainTouchCount, openPrCount, combinedScore, isRisky: risky });
   }
 
   hotspots.sort((a, b) => b.combinedScore - a.combinedScore);

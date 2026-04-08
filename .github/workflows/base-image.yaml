@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       openclaw_version:
-        description: "OpenClaw version to install (leave blank for default 2026.3.11)"
+        description: "OpenClaw version to install (leave blank to use the default in Dockerfile.base)"
         required: false
         default: ""
 

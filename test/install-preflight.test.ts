@@ -1550,8 +1550,10 @@ describe("installer pure helpers", () => {
   });
 
   it("resolve_openclaw_version: falls back to Dockerfile.base when package.json omits it", () => {
+    const expected = fs.readFileSync(path.join(import.meta.dirname, "..", "Dockerfile.base"), "utf-8")
+      .match(/ARG OPENCLAW_VERSION=(\S+)/)?.[1];
     const r = callInstallerFn('resolve_openclaw_version "$PWD"');
-    expect(r.stdout.trim()).toBe("2026.3.11");
+    expect(r.stdout.trim()).toBe(expected);
   });
 
   it("is_source_checkout: rejects a payload-like checkout without git metadata", () => {

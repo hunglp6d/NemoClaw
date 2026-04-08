@@ -80,4 +80,4 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            OPENCLAW_VERSION=${{ inputs.openclaw_version || '' }}
+            ${{ inputs.openclaw_version && format('OPENCLAW_VERSION={0}', inputs.openclaw_version) || '' }}

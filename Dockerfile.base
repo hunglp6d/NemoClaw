@@ -163,5 +163,5 @@ RUN --mount=type=bind,source=nemoclaw-blueprint/blueprint.yaml,target=/tmp/bluep
         echo "Error: OpenClaw version ${OPENCLAW_VERSION} not found on npm registry"; \
         echo "Hint: Check available versions with: npm view openclaw versions"; exit 1; \
     fi; \
-    npm install -g openclaw@${OPENCLAW_VERSION} \
+    npm install -g "openclaw@${OPENCLAW_VERSION}" \
     && pip3 install --no-cache-dir --break-system-packages "pyyaml==6.0.3"

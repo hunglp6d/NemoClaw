@@ -334,7 +334,7 @@ fi
 
 # M5c: Recursive filesystem search for the real Telegram token.
 # Covers /sandbox (workspace), /home, /etc, /tmp, /var.
-sandbox_fs_tg=$(printf '%s' "$TELEGRAM_TOKEN" | sandbox_exec_stdin "grep -rFl -f /dev/stdin /sandbox /home /etc /tmp /var 2>/dev/null || true")
+sandbox_fs_tg=$(printf '%s' "$TELEGRAM_TOKEN" | sandbox_exec_stdin "grep -rFlm1 -f - /sandbox /home /etc /tmp /var 2>/dev/null || true")
 if [ -n "$sandbox_fs_tg" ]; then
   fail "M5c: Real Telegram token found on sandbox filesystem: ${sandbox_fs_tg}"
 else
@@ -371,7 +371,7 @@ else
 fi
 
 # M5g: Recursive filesystem search for the real Discord token
-sandbox_fs_dc=$(printf '%s' "$DISCORD_TOKEN" | sandbox_exec_stdin "grep -rFl -f /dev/stdin /sandbox /home /etc /tmp /var 2>/dev/null || true")
+sandbox_fs_dc=$(printf '%s' "$DISCORD_TOKEN" | sandbox_exec_stdin "grep -rFlm1 -f - /sandbox /home /etc /tmp /var 2>/dev/null || true")
 if [ -n "$sandbox_fs_dc" ]; then
   fail "M5g: Real Discord token found on sandbox filesystem: ${sandbox_fs_dc}"
 else

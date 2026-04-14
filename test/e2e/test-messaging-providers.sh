@@ -305,17 +305,28 @@ fi
 # the sandbox: full environment, process list, or filesystem.
 
 sandbox_env_all=$(sandbox_exec "env 2>/dev/null" 2>/dev/null || true)
-sandbox_ps=$(sandbox_exec "ps aux 2>/dev/null || ps -ef 2>/dev/null" 2>/dev/null || true)
+sandbox_ps=$(openshell sandbox exec -n "$SANDBOX_NAME" -- \
+  sh -c 'cat /proc/[0-9]*/cmdline 2>/dev/null | tr "\0" "\n"' 2>/dev/null || true)
+
+if [ -n "$sandbox_ps" ]; then
+  info "Process cmdlines captured ($(echo "$sandbox_ps" | wc -l | tr -d ' ') lines)"
+else
+  info "Process cmdline capture returned empty — M5b/M5f will skip"
+fi
 
 # M5a: Full environment dump must not contain the real Telegram token
-if [ -n "$sandbox_env_all" ] && echo "$sandbox_env_all" | grep -qF "$TELEGRAM_TOKEN"; then
+if [ -z "$sandbox_env_all" ]; then
+  skip "M5a: Environment variable list is empty"
+elif echo "$sandbox_env_all" | grep -qF "$TELEGRAM_TOKEN"; then
   fail "M5a: Real Telegram token found in full sandbox environment dump"
 else
   pass "M5a: Real Telegram token absent from full sandbox environment"
 fi
 
 # M5b: Process list must not contain the real Telegram token
-if [ -n "$sandbox_ps" ] && echo "$sandbox_ps" | grep -qF "$TELEGRAM_TOKEN"; then
+if [ -z "$sandbox_ps" ]; then
+  skip "M5b: Process list is empty"
+elif echo "$sandbox_ps" | grep -qF "$TELEGRAM_TOKEN"; then
   fail "M5b: Real Telegram token found in sandbox process list"
 else
   pass "M5b: Real Telegram token absent from sandbox process list"
@@ -342,14 +353,18 @@ else
 fi
 
 # M5e: Full environment dump must not contain the real Discord token
-if [ -n "$sandbox_env_all" ] && echo "$sandbox_env_all" | grep -qF "$DISCORD_TOKEN"; then
+if [ -z "$sandbox_env_all" ]; then
+  skip "M5e: Environment variable list is empty"
+elif echo "$sandbox_env_all" | grep -qF "$DISCORD_TOKEN"; then
   fail "M5e: Real Discord token found in full sandbox environment dump"
 else
   pass "M5e: Real Discord token absent from full sandbox environment"
 fi
 
 # M5f: Process list must not contain the real Discord token
-if [ -n "$sandbox_ps" ] && echo "$sandbox_ps" | grep -qF "$DISCORD_TOKEN"; then
+if [ -z "$sandbox_ps" ]; then
+  skip "M5f: Process list is empty"
+elif echo "$sandbox_ps" | grep -qF "$DISCORD_TOKEN"; then
   fail "M5f: Real Discord token found in sandbox process list"
 else
   pass "M5f: Real Discord token absent from sandbox process list"

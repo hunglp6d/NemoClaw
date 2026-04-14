@@ -99,6 +99,27 @@ export TELEGRAM_BOT_TOKEN="$TELEGRAM_TOKEN"
 export DISCORD_BOT_TOKEN="$DISCORD_TOKEN"
 export TELEGRAM_ALLOWED_IDS="$TELEGRAM_IDS"
 
+# Run a command inside the sandbox via stdin (avoids exposing sensitive args in process list)
+sandbox_exec_stdin() {
+  local cmd="$1"
+  local ssh_config
+  ssh_config="$(mktemp)"
+  openshell sandbox ssh-config "$SANDBOX_NAME" >"$ssh_config" 2>/dev/null
+
+  local result
+  result=$(timeout 60 ssh -F "$ssh_config" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o ConnectTimeout=10 \
+    -o LogLevel=ERROR \
+    "openshell-${SANDBOX_NAME}" \
+    "$cmd" \
+    2>/dev/null) || true
+
+  rm -f "$ssh_config"
+  echo "$result"
+}
+
 # Run a command inside the sandbox and capture output
 sandbox_exec() {
   local cmd="$1"
@@ -302,7 +323,7 @@ fi
 
 # M5c: Recursive filesystem search for the real Telegram token.
 # Covers /sandbox (workspace), /home, /etc, /tmp, /var.
-sandbox_fs_tg=$(sandbox_exec "grep -rFl '$TELEGRAM_TOKEN' /sandbox /home /etc /tmp /var 2>/dev/null || true" 2>/dev/null || true)
+sandbox_fs_tg=$(printf '%s' "$TELEGRAM_TOKEN" | sandbox_exec_stdin "grep -rFl -f /dev/stdin /sandbox /home /etc /tmp /var 2>/dev/null || true")
 if [ -n "$sandbox_fs_tg" ]; then
   fail "M5c: Real Telegram token found on sandbox filesystem: ${sandbox_fs_tg}"
 else
@@ -335,7 +356,7 @@ else
 fi
 
 # M5g: Recursive filesystem search for the real Discord token
-sandbox_fs_dc=$(sandbox_exec "grep -rFl '$DISCORD_TOKEN' /sandbox /home /etc /tmp /var 2>/dev/null || true" 2>/dev/null || true)
+sandbox_fs_dc=$(printf '%s' "$DISCORD_TOKEN" | sandbox_exec_stdin "grep -rFl -f /dev/stdin /sandbox /home /etc /tmp /var 2>/dev/null || true")
 if [ -n "$sandbox_fs_dc" ]; then
   fail "M5g: Real Discord token found on sandbox filesystem: ${sandbox_fs_dc}"
 else

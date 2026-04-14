@@ -452,9 +452,9 @@ function verifyVersionState(version: string, docsPublicUrl: string, docsDisplayV
 
 function runInstallerAndBuild(version: string): void {
   log("Running installer version check");
-  const installerContent = readText(INSTALL_SH);
-  if (!installerContent.includes(`DEFAULT_NEMOCLAW_VERSION="${version}"`)) {
-    throw new Error(`install.sh does not contain DEFAULT_NEMOCLAW_VERSION="${version}"`);
+  const installerVersion = run("bash", [INSTALL_SH, "--version"]);
+  if (!installerVersion.includes(`v${version}`)) {
+    throw new Error(`Installer version output did not include v${version}`);
   }
 
   log("Running build:cli");

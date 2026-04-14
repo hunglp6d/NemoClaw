@@ -14,7 +14,8 @@
 #
 #   1. Provider creation — openshell stores the real token
 #   2. Sandbox attachment — --provider flags wire providers to the sandbox
-#   3. Credential isolation — real tokens never appear in sandbox env
+#   3. Credential isolation — real tokens never appear in sandbox env,
+#      process list, or filesystem
 #   4. Config patching — openclaw.json channels use placeholder values
 #   5. Network reachability — Node.js can reach messaging APIs through proxy
 #   6. Native Discord gateway path — WebSocket path is probed separately from REST
@@ -275,6 +276,81 @@ if [ -n "$TELEGRAM_PLACEHOLDER" ] || [ -n "$DISCORD_PLACEHOLDER" ]; then
 else
   skip "M5: No messaging placeholders found — OpenShell may not inject them as env vars"
   info "Subsequent phases that depend on placeholders will adapt"
+fi
+
+# M3/M4 verify the specific TELEGRAM_BOT_TOKEN / DISCORD_BOT_TOKEN
+# env vars hold placeholders. The checks below verify the real
+# host-side tokens do not appear on ANY observable surface inside
+# the sandbox: full environment, process list, or filesystem.
+
+sandbox_env_all=$(sandbox_exec "env 2>/dev/null" 2>/dev/null || true)
+sandbox_ps=$(sandbox_exec "ps aux 2>/dev/null || ps -ef 2>/dev/null" 2>/dev/null || true)
+
+# M5a: Full environment dump must not contain the real Telegram token
+if [ -n "$sandbox_env_all" ] && echo "$sandbox_env_all" | grep -qF "$TELEGRAM_TOKEN"; then
+  fail "M5a: Real Telegram token found in full sandbox environment dump"
+else
+  pass "M5a: Real Telegram token absent from full sandbox environment"
+fi
+
+# M5b: Process list must not contain the real Telegram token
+if [ -n "$sandbox_ps" ] && echo "$sandbox_ps" | grep -qF "$TELEGRAM_TOKEN"; then
+  fail "M5b: Real Telegram token found in sandbox process list"
+else
+  pass "M5b: Real Telegram token absent from sandbox process list"
+fi
+
+# M5c: Recursive filesystem search for the real Telegram token.
+# Covers /sandbox (workspace), /home, /etc, /tmp, /var.
+sandbox_fs_tg=$(sandbox_exec "grep -rFl '$TELEGRAM_TOKEN' /sandbox /home /etc /tmp /var 2>/dev/null || true" 2>/dev/null || true)
+if [ -n "$sandbox_fs_tg" ]; then
+  fail "M5c: Real Telegram token found on sandbox filesystem: ${sandbox_fs_tg}"
+else
+  pass "M5c: Real Telegram token absent from sandbox filesystem"
+fi
+
+# M5d: Placeholder string must be present in the sandbox environment
+if [ -n "$TELEGRAM_PLACEHOLDER" ]; then
+  if echo "$sandbox_env_all" | grep -qF "$TELEGRAM_PLACEHOLDER"; then
+    pass "M5d: Telegram placeholder confirmed present in sandbox environment"
+  else
+    fail "M5d: Telegram placeholder not found in sandbox environment"
+  fi
+else
+  skip "M5d: No Telegram placeholder to verify (provider-only mode)"
+fi
+
+# M5e: Full environment dump must not contain the real Discord token
+if [ -n "$sandbox_env_all" ] && echo "$sandbox_env_all" | grep -qF "$DISCORD_TOKEN"; then
+  fail "M5e: Real Discord token found in full sandbox environment dump"
+else
+  pass "M5e: Real Discord token absent from full sandbox environment"
+fi
+
+# M5f: Process list must not contain the real Discord token
+if [ -n "$sandbox_ps" ] && echo "$sandbox_ps" | grep -qF "$DISCORD_TOKEN"; then
+  fail "M5f: Real Discord token found in sandbox process list"
+else
+  pass "M5f: Real Discord token absent from sandbox process list"
+fi
+
+# M5g: Recursive filesystem search for the real Discord token
+sandbox_fs_dc=$(sandbox_exec "grep -rFl '$DISCORD_TOKEN' /sandbox /home /etc /tmp /var 2>/dev/null || true" 2>/dev/null || true)
+if [ -n "$sandbox_fs_dc" ]; then
+  fail "M5g: Real Discord token found on sandbox filesystem: ${sandbox_fs_dc}"
+else
+  pass "M5g: Real Discord token absent from sandbox filesystem"
+fi
+
+# M5h: Discord placeholder must be present in the sandbox environment
+if [ -n "$DISCORD_PLACEHOLDER" ]; then
+  if echo "$sandbox_env_all" | grep -qF "$DISCORD_PLACEHOLDER"; then
+    pass "M5h: Discord placeholder confirmed present in sandbox environment"
+  else
+    fail "M5h: Discord placeholder not found in sandbox environment"
+  fi
+else
+  skip "M5h: No Discord placeholder to verify (provider-only mode)"
 fi
 
 # ══════════════════════════════════════════════════════════════════

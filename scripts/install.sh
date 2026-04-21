@@ -920,6 +920,9 @@ install_nemoclaw() {
     spin "Installing NemoClaw dependencies" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm install --ignore-scripts"
     spin "Building NemoClaw CLI modules" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm run --if-present build:cli"
     spin "Building NemoClaw plugin" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\"/nemoclaw && npm install --ignore-scripts && npm run build"
+    if command_exists pip3 && [ -d "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router" ]; then
+      spin "Installing model router" pip3 install --quiet --user "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router[prefill,proxy]"
+    fi
     spin "Linking NemoClaw CLI" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm link"
   else
     if [[ -f "$package_json" ]]; then
@@ -938,6 +941,8 @@ install_nemoclaw() {
     mkdir -p "$(dirname "$nemoclaw_src")"
     NEMOCLAW_SOURCE_ROOT="$nemoclaw_src"
     spin "Cloning NemoClaw source" git clone --depth 1 --branch "$release_ref" https://github.com/NVIDIA/NemoClaw.git "$nemoclaw_src"
+    # Initialize submodules (e.g., llm-router for model routing support)
+    git -C "$nemoclaw_src" submodule update --init --depth 1 2>/dev/null || true
     # Fetch version tags into the shallow clone so `git describe --tags
     # --match "v*"` works at runtime (the shallow clone only has the
     # single ref we asked for).
@@ -953,6 +958,9 @@ install_nemoclaw() {
     spin "Installing NemoClaw dependencies" bash -c "cd \"$nemoclaw_src\" && npm install --ignore-scripts"
     spin "Building NemoClaw CLI modules" bash -c "cd \"$nemoclaw_src\" && npm run --if-present build:cli"
     spin "Building NemoClaw plugin" bash -c "cd \"$nemoclaw_src\"/nemoclaw && npm install --ignore-scripts && npm run build"
+    if command_exists pip3 && [ -d "$nemoclaw_src/nemoclaw-blueprint/router/llm-router" ]; then
+      spin "Installing model router" pip3 install --quiet --user "$nemoclaw_src/nemoclaw-blueprint/router/llm-router[prefill,proxy]"
+    fi
     spin "Linking NemoClaw CLI" bash -c "cd \"$nemoclaw_src\" && npm link"
   fi
 

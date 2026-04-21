@@ -41,6 +41,10 @@ COPY nemoclaw-blueprint/ /opt/nemoclaw-blueprint/
 WORKDIR /opt/nemoclaw
 RUN npm ci --omit=dev
 
+# NOTE: model-router-toolkit is NOT installed in the sandbox image.
+# The router runs on the host (started by onboard) and the sandbox
+# reaches it through the OpenShell gateway's L7 proxy.
+
 # Set up blueprint for local resolution.
 # Blueprints are immutable at runtime; DAC protection (root ownership) is applied
 # later since /sandbox/.nemoclaw is Landlock read_write for plugin state (#804).

@@ -57,6 +57,7 @@ interface Blueprint {
       profiles?: Record<string, InferenceProfile>;
     };
     sandbox?: SandboxConfig;
+    router?: RouterConfig;
     policy?: {
       additions?: Record<string, unknown>;
     };
@@ -78,6 +79,14 @@ interface SandboxConfig {
   name?: string;
   forward_ports?: number[];
 }
+
+interface RouterConfig {
+  enabled?: boolean;
+  port?: number;
+  pool_config_path?: string;
+}
+
+const DEFAULT_ROUTER_PORT = 4000;
 
 export function loadBlueprint(): Blueprint {
   const blueprintPath = process.env.NEMOCLAW_BLUEPRINT_PATH ?? ".";
@@ -124,6 +133,7 @@ async function resolveRunConfig(
   inferenceProfiles: Record<string, InferenceProfile>;
   inferenceCfg: InferenceProfile;
   sandboxCfg: SandboxConfig;
+  routerCfg: RouterConfig;
 }> {
   const inferenceProfiles = blueprint.components?.inference?.profiles ?? {};
   if (!(profile in inferenceProfiles)) {
@@ -143,7 +153,8 @@ async function resolveRunConfig(
   }
 
   const sandboxCfg = blueprint.components?.sandbox ?? {};
-  return { inferenceProfiles, inferenceCfg, sandboxCfg };
+  const routerCfg = blueprint.components?.router ?? {};
+  return { inferenceProfiles, inferenceCfg, sandboxCfg, routerCfg };
 }
 
 // ── Actions ─────────────────────────────────────────────────────
@@ -163,6 +174,11 @@ export interface RunPlan {
     model: string | undefined;
     credential_env: string | undefined;
   };
+  router: {
+    enabled: boolean;
+    port: number;
+    pool_config_path: string | undefined;
+  };
   policy_additions: Record<string, unknown>;
   dry_run: boolean;
 }
@@ -175,7 +191,7 @@ export async function actionPlan(
   const rid = emitRunId();
   progress(10, "Validating blueprint");
 
-  const { inferenceCfg, sandboxCfg } = await resolveRunConfig(
+  const { inferenceCfg, sandboxCfg, routerCfg } = await resolveRunConfig(
     profile,
     blueprint,
     options?.endpointUrl,
@@ -187,6 +203,9 @@ export async function actionPlan(
       "openshell CLI not found. Install OpenShell first.\n  See: https://github.com/NVIDIA/OpenShell",
     );
   }
+
+  const routerEnabled = routerCfg.enabled === true;
+  const routerPort = routerCfg.port ?? DEFAULT_ROUTER_PORT;
 
   const plan: RunPlan = {
     run_id: rid,
@@ -202,6 +221,11 @@ export async function actionPlan(
       endpoint: inferenceCfg.endpoint,
       model: inferenceCfg.model,
       credential_env: inferenceCfg.credential_env,
+    },
+    router: {
+      enabled: routerEnabled,
+      port: routerPort,
+      pool_config_path: routerCfg.pool_config_path,
     },
     policy_additions: blueprint.components?.policy?.additions ?? {},
     dry_run: options?.dryRun ?? false,
@@ -403,7 +427,10 @@ export async function actionRollback(rid: string): Promise<void> {
   const planFile = join(stateDir, "plan.json");
   try {
     const planData = readFileSync(planFile, "utf-8");
-    const plan = JSON.parse(planData) as { sandbox_name?: string };
+    const plan = JSON.parse(planData) as {
+      sandbox_name?: string;
+    };
+
     const sandboxName = plan.sandbox_name ?? "openclaw";
 
     progress(30, `Stopping sandbox ${sandboxName}`);

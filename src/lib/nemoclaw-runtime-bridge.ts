@@ -27,7 +27,6 @@ export interface NemoClawRuntimeBridge {
   backupAll: () => void;
   deploy: (instanceName?: string) => Promise<void>;
   garbageCollectImages: (args?: string[]) => Promise<void>;
-  help: () => void;
   onboard: (args?: string[]) => Promise<void>;
   recoverNamedGatewayRuntime: () => Promise<GatewayRecoveryResult>;
   recoverRegistryEntries: (options?: {
@@ -60,7 +59,6 @@ export interface NemoClawRuntimeBridge {
   setup: (args?: string[]) => Promise<void>;
   setupSpark: (args?: string[]) => Promise<void>;
   upgradeSandboxes: (args?: string[]) => Promise<void>;
-  version: () => void;
 }
 
 let runtimeFactory = (): NemoClawRuntimeBridge => {

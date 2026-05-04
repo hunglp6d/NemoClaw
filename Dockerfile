@@ -31,21 +31,27 @@ FROM ${BASE_IMAGE}
 # conditional install keeps stale bases usable while fresh bases skip apt.
 # Refs: #2343, shields-up chattr hardening
 # hadolint ignore=DL3001
-RUN apt-mark manual procps e2fsprogs 2>/dev/null || true \
-    && (apt-get remove --purge -y gcc gcc-12 g++ g++-12 cpp cpp-12 make \
-        netcat-openbsd netcat-traditional ncat 2>/dev/null || true) \
-    && apt-get autoremove --purge -y \
-    && packages="" \
-    && if ! command -v ps >/dev/null 2>&1; then packages="${packages} procps=2:4.0.4-9"; fi \
-    && if ! command -v chattr >/dev/null 2>&1; then packages="${packages} e2fsprogs=1.47.2-3+b10"; fi \
-    && if [ -n "$packages" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends $packages \
-        && rm -rf /var/lib/apt/lists/*; \
-    else \
-        rm -rf /var/lib/apt/lists/*; \
-    fi \
-    && ps --version \
-    && command -v chattr >/dev/null
+RUN set -eu; \
+    apt-mark manual procps e2fsprogs 2>/dev/null || true; \
+    (apt-get remove --purge -y gcc gcc-12 g++ g++-12 cpp cpp-12 make \
+        netcat-openbsd netcat-traditional ncat 2>/dev/null || true); \
+    apt-get autoremove --purge -y; \
+    needs_ps=0; \
+    needs_chattr=0; \
+    if ! command -v ps >/dev/null 2>&1; then needs_ps=1; fi; \
+    if ! command -v chattr >/dev/null 2>&1; then needs_chattr=1; fi; \
+    if [ "$needs_ps" = "1" ] || [ "$needs_chattr" = "1" ]; then \
+        apt-get update; \
+        if [ "$needs_ps" = "1" ]; then \
+            apt-get install -y --no-install-recommends procps=2:4.0.4-9; \
+        fi; \
+        if [ "$needs_chattr" = "1" ]; then \
+            apt-get install -y --no-install-recommends e2fsprogs=1.47.2-3+b10; \
+        fi; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*; \
+    ps --version; \
+    command -v chattr >/dev/null
 
 
 # Copy built plugin and blueprint into the sandbox

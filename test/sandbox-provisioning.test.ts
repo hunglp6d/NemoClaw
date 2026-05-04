@@ -241,8 +241,9 @@ describe("sandbox provisioning: base runtime tools", () => {
       expect(calls).toContain("apt-get autoremove --purge -y");
       expect(calls).toContain("apt-get update");
       expect(calls).toContain(
-        "apt-get install -y --no-install-recommends procps=2:4.0.4-9 e2fsprogs=1.47.2-3+b10",
+        "apt-get install -y --no-install-recommends procps=2:4.0.4-9",
       );
+      expect(calls).toContain("apt-get install -y --no-install-recommends e2fsprogs=1.47.2-3+b10");
       expect(result.stdout).toContain("procps test version");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

@@ -3038,16 +3038,19 @@ echo "docker $*" >> ${JSON.stringify(phaseLog)}
 exit 0`,
     );
 
-    // Run main() directly via the bash entrypoint check. We force stdin to
-    // /dev/null when stdinIsTty is false (default — simulates curl|bash).
+    // Run main() directly via the bash entrypoint check. We force a child with
+    // no controlling terminal when stdinIsTty is false (default), matching the
+    // fail-fast branch where both stdin and /dev/tty are unavailable. WSL can
+    // keep /dev/tty openable even when stdin is a pipe, so use setsid there.
+    const useSetsid = !options.stdinIsTty && process.platform !== "darwin";
     const result = spawnSync(
-      "bash",
-      [INSTALLER_PAYLOAD],
+      useSetsid ? "setsid" : "bash",
+      useSetsid ? ["bash", INSTALLER_PAYLOAD] : [INSTALLER_PAYLOAD],
       {
         cwd: tmp,
         encoding: "utf-8",
-        // input: "" makes spawnSync attach a non-TTY stdin pipe — equivalent
-        // to curl|bash for the purposes of [ -t 0 ] and /dev/tty in CI.
+        // input: "" makes spawnSync attach a non-TTY stdin pipe. setsid above
+        // additionally removes /dev/tty on Linux/WSL.
         input: options.stdinIsTty ? undefined : "",
         env: {
           HOME: tmp,

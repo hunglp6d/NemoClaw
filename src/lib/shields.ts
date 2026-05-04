@@ -16,6 +16,9 @@ const { fork } = require("child_process");
 const { run, runCapture, validateName, shellQuote } = require("./runner");
 const { dockerExecFileSync } = require("./docker/exec");
 const { dockerCapture } = require("./docker/run");
+const registry = require("./registry") as {
+  getSandbox?: (name: string) => { openshellDriver?: string | null } | null;
+};
 const {
   buildPolicyGetCommand,
   buildPolicySetCommand,
@@ -42,6 +45,13 @@ const STATE_DIR = path.join(process.env.HOME ?? "/tmp", ".nemoclaw", "state");
 const K3S_CONTAINER = "openshell-cluster-nemoclaw";
 
 function resolveDockerDriverSandboxContainer(sandboxName: string): string | null {
+  try {
+    if (registry.getSandbox?.(sandboxName)?.openshellDriver !== "docker") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
   const prefix = `openshell-${sandboxName}-`;
   const exact = `openshell-${sandboxName}`;
   const output = dockerCapture(["ps", "--format", "{{.Names}}"], { ignoreError: true });

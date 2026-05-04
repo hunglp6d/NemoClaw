@@ -26,22 +26,26 @@ RUN npm ci && npm run build
 FROM ${BASE_IMAGE}
 
 # Harden: remove unnecessary build tools and network probes from base image (#830)
-# Protect procps before autoremove — the GHCR base may predate the procps
-# addition, leaving it absent or auto-marked. apt-mark + conditional install
-# guarantees ps/top/kill are present regardless of base image staleness.
-# Ref: #2343
+# Protect runtime tools before autoremove — the GHCR base may predate the
+# procps/e2fsprogs additions, leaving ps/chattr absent or auto-marked. The
+# conditional install keeps stale bases usable while fresh bases skip apt.
+# Refs: #2343, shields-up chattr hardening
 # hadolint ignore=DL3001
-RUN apt-mark manual procps 2>/dev/null || true \
+RUN apt-mark manual procps e2fsprogs 2>/dev/null || true \
     && (apt-get remove --purge -y gcc gcc-12 g++ g++-12 cpp cpp-12 make \
         netcat-openbsd netcat-traditional ncat 2>/dev/null || true) \
     && apt-get autoremove --purge -y \
-    && if ! command -v ps >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends procps=2:4.0.4-9 \
+    && packages="" \
+    && if ! command -v ps >/dev/null 2>&1; then packages="${packages} procps=2:4.0.4-9"; fi \
+    && if ! command -v chattr >/dev/null 2>&1; then packages="${packages} e2fsprogs=1.47.2-3+b10"; fi \
+    && if [ -n "$packages" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends $packages \
         && rm -rf /var/lib/apt/lists/*; \
     else \
         rm -rf /var/lib/apt/lists/*; \
     fi \
-    && ps --version
+    && ps --version \
+    && command -v chattr >/dev/null
 
 
 # Copy built plugin and blueprint into the sandbox

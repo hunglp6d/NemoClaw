@@ -70,7 +70,8 @@ export async function showSandboxStatus(sandboxName: string): Promise<void> {
       console.log("    Inference: not verified (gateway/sandbox state not verified)");
     }
     const hostGpu = sb.hostGpuDetected ? "yes" : "no";
-    const sandboxGpu = sb.sandboxGpuEnabled ? "enabled" : "disabled";
+    const sandboxGpuEnabled = sb.sandboxGpuEnabled ?? (sb.gpuEnabled === true);
+    const sandboxGpu = sandboxGpuEnabled ? "enabled" : "disabled";
     const sandboxGpuMode = sb.sandboxGpuMode ? ` (${sb.sandboxGpuMode})` : "";
     const sandboxGpuDevice = sb.sandboxGpuDevice ? ` device=${sb.sandboxGpuDevice}` : "";
     const openshellDriver = sb.openshellDriver || "unknown";

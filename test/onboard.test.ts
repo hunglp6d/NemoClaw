@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 
 import type { AgentDefinition } from "../dist/lib/agent-defs.js";
 import { loadAgent } from "../dist/lib/agent-defs.js";
@@ -157,7 +158,15 @@ function isOnboardTestInternals(
     typeof value.buildCompatibleEndpointSandboxSmokeCommand === "function" &&
     typeof value.buildCompatibleEndpointSandboxSmokeScript === "function" &&
     typeof value.buildSandboxConfigSyncScript === "function" &&
+    typeof value.buildSandboxGpuCreateArgs === "function" &&
+    typeof value.buildDirectGpuPolicyYaml === "function" &&
+    typeof value.buildDirectSandboxGpuProofCommands === "function" &&
     typeof value.classifySandboxCreateFailure === "function" &&
+    typeof value.getDockerDriverGatewayEnv === "function" &&
+    typeof value.isLinuxDockerDriverGatewayEnabled === "function" &&
+    typeof value.parseDockerCdiSpecDirs === "function" &&
+    typeof value.resolveSandboxGpuConfig === "function" &&
+    typeof value.shouldAllowOpenshellAboveBlueprintMax === "function" &&
     typeof value.getDefaultSandboxNameForAgent === "function" &&
     typeof value.getSandboxPromptDefault === "function" &&
     typeof value.getRequestedSandboxAgentName === "function" &&
@@ -270,18 +279,12 @@ describe("onboard helpers", () => {
       "utf-8",
     );
     const gpuPolicy = buildDirectGpuPolicyYaml(basePolicy);
-    const baseReadOnly = basePolicy.slice(
-      basePolicy.indexOf("read_only:"),
-      basePolicy.indexOf("read_write:"),
-    );
-    const gpuReadOnly = gpuPolicy.slice(
-      gpuPolicy.indexOf("read_only:"),
-      gpuPolicy.indexOf("read_write:"),
-    );
-    const gpuReadWrite = gpuPolicy.slice(gpuPolicy.indexOf("read_write:"));
-    expect(baseReadOnly).toContain("- /proc");
-    expect(gpuReadOnly).not.toContain("- /proc");
-    expect(gpuReadWrite).toContain("- /proc");
+    const baseDoc = YAML.parse(basePolicy);
+    const gpuDoc = YAML.parse(gpuPolicy);
+
+    expect(baseDoc.filesystem_policy.read_only).toContain("/proc");
+    expect(gpuDoc.filesystem_policy.read_only).not.toContain("/proc");
+    expect(gpuDoc.filesystem_policy.read_write).toContain("/proc");
   });
 
   it("models the Linux OpenShell Docker-driver gateway environment", () => {
@@ -1862,6 +1865,7 @@ mod._load = function(req, parent, isMain) {
   }
   return origLoad.call(this, req, parent, isMain);
 };
+Object.defineProperty(process, "platform", { value: "darwin" });
 const { startGateway } = require(${onboardPath});
 startGateway(null).catch(() => {});
 `;

@@ -1404,7 +1404,9 @@ function verifyDirectSandboxGpu(sandboxName: string): void {
     for (const line of sandboxGpuRemediationLines()) {
       console.error(`    ${line}`);
     }
-    process.exit(result.status || 1);
+    const statusText = String(result.status || 1);
+    const diagnosticSuffix = diagnostic ? `: ${diagnostic.slice(0, 300)}` : "";
+    throw new Error(`GPU proof failed: ${proof.label} (status ${statusText})${diagnosticSuffix}`);
   }
 }
 
@@ -3042,6 +3044,26 @@ function getDockerDriverGatewayPid(): number | null {
   }
 }
 
+function isDockerDriverGatewayProcess(pid: number, gatewayBin?: string | null): boolean {
+  const procCmdlinePath = `/proc/${pid}/cmdline`;
+  let identity = "";
+  try {
+    if (fs.existsSync(procCmdlinePath)) {
+      identity = fs.readFileSync(procCmdlinePath, "utf-8").replace(/\0/g, " ").trim();
+    }
+  } catch {
+    identity = "";
+  }
+  if (!identity) {
+    identity = captureProcessArgs(pid);
+  }
+  if (!identity) return false;
+  return (
+    identity.includes("openshell-gateway") ||
+    (typeof gatewayBin === "string" && gatewayBin.length > 0 && identity.includes(gatewayBin))
+  );
+}
+
 function isDockerDriverGatewayProcessAlive(): boolean {
   const pid = getDockerDriverGatewayPid();
   return pid !== null && isPidAlive(pid);
@@ -4067,12 +4089,16 @@ async function startDockerDriverGateway({
 
   const existingPid = getDockerDriverGatewayPid();
   if (existingPid !== null && isPidAlive(existingPid)) {
-    console.log(`  Restarting unhealthy Docker-driver gateway process (PID ${existingPid})...`);
-    try {
-      process.kill(existingPid, "SIGTERM");
-      sleep(1);
-    } catch {
-      /* best effort; the new process will surface any remaining port conflict */
+    if (!isDockerDriverGatewayProcess(existingPid, gatewayBin)) {
+      fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    } else {
+      console.log(`  Restarting unhealthy Docker-driver gateway process (PID ${existingPid})...`);
+      try {
+        process.kill(existingPid, "SIGTERM");
+        sleep(1);
+      } catch {
+        /* best effort; the new process will surface any remaining port conflict */
+      }
     }
   }
 
@@ -5484,7 +5510,18 @@ async function createSandbox(
   }
 
   if (effectiveSandboxGpuConfig.sandboxGpuEnabled) {
-    verifyDirectSandboxGpu(sandboxName);
+    try {
+      verifyDirectSandboxGpu(sandboxName);
+    } catch (error) {
+      const delResult = runOpenshell(["sandbox", "delete", sandboxName], { ignoreError: true });
+      if (delResult.status === 0) {
+        console.error("  The sandbox with failed GPU access has been removed — you can retry safely.");
+      } else {
+        console.error("  Could not remove the sandbox with failed GPU access. Manual cleanup:");
+        console.error(`    openshell sandbox delete "${sandboxName}"`);
+      }
+      throw error;
+    }
   }
 
   // Verify web search config was actually accepted by the agent runtime.

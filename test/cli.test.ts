@@ -392,10 +392,24 @@ describe("CLI dispatch", () => {
   });
 
   it("suggests list for a mistyped list command", () => {
-    const r = run("liost");
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("Unknown command: liost");
-    expect(r.out).toContain("Did you mean: nemoclaw list?");
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-list-typo-"));
+    const localBin = path.join(home, "bin");
+    fs.mkdirSync(localBin, { recursive: true });
+    fs.writeFileSync(path.join(localBin, "openshell"), "#!/bin/sh\nexit 127\n", {
+      mode: 0o755,
+    });
+    try {
+      const r = runWithEnv("liost", {
+        HOME: home,
+        PATH: `${localBin}:${process.env.PATH || ""}`,
+        NEMOCLAW_HEALTH_POLL_COUNT: "0",
+      });
+      expect(r.code).toBe(1);
+      expect(r.out).toContain("Unknown command: liost");
+      expect(r.out).toContain("Did you mean: nemoclaw list?");
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("recovers a live sandbox before suggesting a bare command typo", () => {
@@ -562,6 +576,12 @@ describe("CLI dispatch", () => {
           isDefault: true,
           activeSessionCount: 1,
           connected: true,
+          hostGpuDetected: false,
+          sandboxGpuEnabled: true,
+          sandboxGpuMode: null,
+          sandboxGpuDevice: null,
+          openshellDriver: null,
+          openshellVersion: null,
         },
       ],
     });
@@ -4657,11 +4677,11 @@ describe("list shows live gateway inference", () => {
     expect(r.code).toBe(0);
     // Live gateway values render on the default sandbox's main row.
     expect(r.out).toContain(
-      "agent: openclaw  model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  GPU  policies: pypi, npm",
+      "agent: openclaw  model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  sandbox GPU  policies: pypi, npm",
     );
     // The stale (stored) row must not appear.
     expect(r.out).not.toContain(
-      "agent: openclaw  model: configured-model  provider: configured-provider  GPU  policies: pypi, npm",
+      "agent: openclaw  model: configured-model  provider: configured-provider  sandbox GPU  policies: pypi, npm",
     );
     // Onboarded values appear in the drift annotation.
     expect(r.out).toContain("(onboarded: model=configured-model, provider=configured-provider)");

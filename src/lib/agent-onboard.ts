@@ -82,6 +82,10 @@ export function createAgentSandbox(agent: AgentDefinition): {
     if (resolved) {
       baseImageRef = resolved.ref;
       console.log(`  Using ${agent.displayName} base image: ${baseImageRef}`);
+    } else if (process.platform === "linux") {
+      throw new Error(
+        `No compatible ${agent.displayName} sandbox base image found for ${baseImageName}`,
+      );
     } else {
       const inspectResult = dockerImageInspect(baseImageTag, {
         ignoreError: true,

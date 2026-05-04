@@ -136,8 +136,14 @@ function resolvePulledCandidate(
   source: SandboxBaseImageResolution["source"],
   options: ResolveBaseImageOptions,
 ): SandboxBaseImageResolution | null {
-  const pullResult = dockerPull(imageRef, { ignoreError: true, suppressOutput: true });
-  if (pullResult.status !== 0) return null;
+  const inspectResult = dockerImageInspect(imageRef, {
+    ignoreError: true,
+    suppressOutput: true,
+  });
+  if (inspectResult.status !== 0) {
+    const pullResult = dockerPull(imageRef, { ignoreError: true, suppressOutput: true });
+    if (pullResult.status !== 0) return null;
+  }
 
   let glibcVersion: string | null = null;
   if (options.requireOpenshellSandboxAbi) {

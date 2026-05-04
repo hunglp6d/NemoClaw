@@ -904,6 +904,42 @@ function getDockerCdiSpecDirs(): string[] {
   );
 }
 
+function isLikelyNvidiaCdiSpecFile(filePath: string): boolean {
+  if (!/\.(json|ya?ml)$/i.test(filePath)) return false;
+  let stat: import("fs").Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return false;
+  }
+  if (!stat.isFile()) return false;
+
+  let content = "";
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return false;
+  }
+  return /nvidia\.com\/gpu|nvidia-container|libcuda|cuda/i.test(content);
+}
+
+function findReadableNvidiaCdiSpecFiles(dirs: string[]): string[] {
+  const specs: string[] = [];
+  for (const dir of dirs) {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const candidate = path.join(dir, entry);
+      if (isLikelyNvidiaCdiSpecFile(candidate)) specs.push(candidate);
+    }
+  }
+  return specs.sort();
+}
+
 function sandboxGpuRemediationLines(): string[] {
   return [
     "Install/configure NVIDIA Container Toolkit CDI, then restart Docker:",
@@ -923,7 +959,8 @@ function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
   if (!isLinuxDockerDriverGatewayEnabled()) return;
 
   const cdiSpecDirs = getDockerCdiSpecDirs();
-  if (cdiSpecDirs.length === 0) {
+  const cdiSpecFiles = findReadableNvidiaCdiSpecFiles(cdiSpecDirs);
+  if (cdiSpecFiles.length === 0) {
     console.error("");
     console.error("  ✗ Docker CDI GPU support was not detected.");
     for (const line of sandboxGpuRemediationLines()) {
@@ -931,7 +968,7 @@ function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
     }
     process.exit(1);
   }
-  console.log(`  ✓ Docker CDI GPU support detected (${cdiSpecDirs.join(", ")})`);
+  console.log(`  ✓ Docker CDI GPU support detected (${cdiSpecFiles.join(", ")})`);
 }
 
 // ── Base image resolution ───────────────────────────────────────
@@ -1380,7 +1417,11 @@ function buildDirectSandboxGpuProofCommands(
 function verifyDirectSandboxGpu(sandboxName: string): void {
   console.log("  Verifying direct sandbox GPU access...");
   for (const proof of buildDirectSandboxGpuProofCommands(sandboxName)) {
-    const result = runOpenshell(proof.args, { ignoreError: true, suppressOutput: true });
+    const result = runOpenshell(proof.args, {
+      ignoreError: true,
+      suppressOutput: true,
+      timeout: 30_000,
+    });
     if (result.status === 0) {
       console.log(`  ✓ GPU proof passed: ${proof.label}`);
       continue;
@@ -3085,7 +3126,14 @@ function isDockerDriverGatewayProcess(
 
 function isDockerDriverGatewayProcessAlive(): boolean {
   const pid = getDockerDriverGatewayPid();
-  return pid !== null && isPidAlive(pid);
+  if (pid === null || !isPidAlive(pid)) return false;
+  if (!isDockerDriverGatewayProcess(pid, resolveOpenShellGatewayBinary(), {
+    requireDockerDriverEnv: true,
+  })) {
+    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    return false;
+  }
+  return true;
 }
 
 function rememberDockerDriverGatewayPid(pid: number): void {
@@ -3171,8 +3219,13 @@ function registerDockerDriverGatewayEndpoint(): boolean {
     ignoreError: true,
     suppressOutput: true,
   });
-  process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
-  return addResult.status === 0 && selectResult.status === 0;
+  const ok = addResult.status === 0 && selectResult.status === 0;
+  if (ok) {
+    process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
+  } else if (process.env.OPENSHELL_GATEWAY === GATEWAY_NAME) {
+    delete process.env.OPENSHELL_GATEWAY;
+  }
+  return ok;
 }
 
 function getGatewayBootstrapRepairPlan(missingSecrets: string[] = []) {
@@ -4145,9 +4198,10 @@ async function startDockerDriverGateway({
     isDockerDriverGatewayProcessAlive() &&
     isGatewayHealthy(gatewayStatus, gwInfo, activeGatewayInfo)
   ) {
-    console.log("  ✓ Reusing existing Docker-driver gateway");
-    registerDockerDriverGatewayEndpoint();
-    return;
+    if (registerDockerDriverGatewayEndpoint()) {
+      console.log("  ✓ Reusing existing Docker-driver gateway");
+      return;
+    }
   }
 
   const gatewayBin = resolveOpenShellGatewayBinary();
@@ -4155,17 +4209,18 @@ async function startDockerDriverGateway({
   const portListenerPid = getDockerDriverGatewayPortListenerPid(portCheck, { gatewayBin });
   if (portListenerPid !== null) {
     rememberDockerDriverGatewayPid(portListenerPid);
-    registerDockerDriverGatewayEndpoint();
-    const adoptedStatus = runCaptureOpenshell(["status"], { ignoreError: true });
-    const adoptedGwInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], {
-      ignoreError: true,
-    });
-    const adoptedActiveGatewayInfo = runCaptureOpenshell(["gateway", "info"], {
-      ignoreError: true,
-    });
-    if (isGatewayHealthy(adoptedStatus, adoptedGwInfo, adoptedActiveGatewayInfo)) {
-      console.log(`  ✓ Reusing existing Docker-driver gateway process (PID ${portListenerPid})`);
-      return;
+    if (registerDockerDriverGatewayEndpoint()) {
+      const adoptedStatus = runCaptureOpenshell(["status"], { ignoreError: true });
+      const adoptedGwInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], {
+        ignoreError: true,
+      });
+      const adoptedActiveGatewayInfo = runCaptureOpenshell(["gateway", "info"], {
+        ignoreError: true,
+      });
+      if (isGatewayHealthy(adoptedStatus, adoptedGwInfo, adoptedActiveGatewayInfo)) {
+        console.log(`  ✓ Reusing existing Docker-driver gateway process (PID ${portListenerPid})`);
+        return;
+      }
     }
   }
   if (!gatewayBin) {
@@ -4221,7 +4276,10 @@ async function startDockerDriverGateway({
     if (!isPidAlive(childPid)) {
       break;
     }
-    registerDockerDriverGatewayEndpoint();
+    if (!registerDockerDriverGatewayEndpoint()) {
+      if (i < pollCount - 1) sleep(pollInterval);
+      continue;
+    }
     const status = runCaptureOpenshell(["status"], { ignoreError: true });
     const namedInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], {
       ignoreError: true,
@@ -9960,6 +10018,7 @@ module.exports = {
   getBlueprintMinOpenshellVersion,
   getBlueprintMaxOpenshellVersion,
   isLinuxDockerDriverGatewayEnabled,
+  findReadableNvidiaCdiSpecFiles,
   parseDockerCdiSpecDirs,
   resolveSandboxGpuConfig,
   shouldAllowOpenshellAboveBlueprintMax,

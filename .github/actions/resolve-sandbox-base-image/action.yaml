@@ -54,4 +54,9 @@ runs:
 
         echo "::warning::No compatible GHCR sandbox base image found, building locally"
         docker build -f Dockerfile.base -t nemoclaw-sandbox-base-local .
+        version="$(glibc_version nemoclaw-sandbox-base-local || true)"
+        if ! glibc_ok "$version"; then
+          echo "::error::Local sandbox base image has glibc ${version:-unknown}; need >= ${min_glibc}"
+          exit 1
+        fi
         echo "BASE_IMAGE=nemoclaw-sandbox-base-local" >> "$GITHUB_ENV"

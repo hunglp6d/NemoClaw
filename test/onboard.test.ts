@@ -88,6 +88,7 @@ type OnboardTestInternals = {
       isDockerDriverGatewayProcessFn?: (pid: number, gatewayBin?: string | null) => boolean;
     },
   ) => boolean;
+  findReadableNvidiaCdiSpecFiles: (dirs: string[]) => string[];
   parseDockerCdiSpecDirs: (value?: string | null) => string[];
   resolveSandboxGpuConfig: (
     gpu: { type: string } | null,
@@ -178,6 +179,7 @@ function isOnboardTestInternals(
     typeof value.getDockerDriverGatewayEnv === "function" &&
     typeof value.isLinuxDockerDriverGatewayEnabled === "function" &&
     typeof value.isDockerDriverGatewayPortListener === "function" &&
+    typeof value.findReadableNvidiaCdiSpecFiles === "function" &&
     typeof value.parseDockerCdiSpecDirs === "function" &&
     typeof value.resolveSandboxGpuConfig === "function" &&
     typeof value.shouldAllowOpenshellAboveBlueprintMax === "function" &&
@@ -224,6 +226,7 @@ const {
   getDockerDriverGatewayEnv,
   isLinuxDockerDriverGatewayEnabled,
   isDockerDriverGatewayPortListener,
+  findReadableNvidiaCdiSpecFiles,
   parseDockerCdiSpecDirs,
   resolveSandboxGpuConfig,
   shouldAllowOpenshellAboveBlueprintMax,
@@ -356,6 +359,29 @@ describe("onboard helpers", () => {
         NEMOCLAW_OPENSHELL_CHANNEL: "auto",
       }),
     ).toBe(false);
+  });
+
+  it("requires readable NVIDIA CDI spec files, not just CDI directories", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cdi-specs-"));
+    try {
+      const emptyDir = path.join(tmpDir, "empty");
+      const cdiDir = path.join(tmpDir, "cdi");
+      fs.mkdirSync(emptyDir);
+      fs.mkdirSync(cdiDir);
+      fs.writeFileSync(path.join(cdiDir, "unrelated.yaml"), "kind: example.com/device\n");
+      expect(findReadableNvidiaCdiSpecFiles([emptyDir, cdiDir])).toEqual([]);
+
+      const specPath = path.join(cdiDir, "gpu-devices.yaml");
+      fs.writeFileSync(
+        specPath,
+        ["cdiVersion: 0.6.0", "kind: nvidia.com/gpu", "devices:", "  - name: all", ""].join(
+          "\n",
+        ),
+      );
+      expect(findReadableNvidiaCdiSpecFiles([emptyDir, cdiDir])).toEqual([specPath]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   it("builds direct sandbox GPU proof commands", () => {

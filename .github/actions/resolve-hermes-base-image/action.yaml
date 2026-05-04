@@ -54,4 +54,9 @@ runs:
 
         echo "::warning::No compatible GHCR Hermes sandbox base image found, building locally"
         docker build -f agents/hermes/Dockerfile.base -t nemoclaw-hermes-base-local .
+        version="$(glibc_version nemoclaw-hermes-base-local || true)"
+        if ! glibc_ok "$version"; then
+          echo "::error::Local Hermes sandbox base image has glibc ${version:-unknown}; need >= ${min_glibc}"
+          exit 1
+        fi
         echo "HERMES_BASE_IMAGE=nemoclaw-hermes-base-local" >> "$GITHUB_ENV"

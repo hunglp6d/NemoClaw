@@ -670,10 +670,14 @@ describe("regression guards", () => {
                 'ignored  openshell-aarch64-apple-darwin.tar.gz' > "$out"
               ;;
             openshell-gateway-checksums-sha256.txt)
-              printf '%s\n' 'ignored  openshell-gateway-x86_64-unknown-linux-gnu.tar.gz' > "$out"
+              printf '%s\n' \
+                'ignored  openshell-gateway-x86_64-unknown-linux-gnu.tar.gz' \
+                'ignored  openshell-gateway-aarch64-unknown-linux-gnu.tar.gz' > "$out"
               ;;
             openshell-sandbox-checksums-sha256.txt)
-              printf '%s\n' 'ignored  openshell-sandbox-x86_64-unknown-linux-gnu.tar.gz' > "$out"
+              printf '%s\n' \
+                'ignored  openshell-sandbox-x86_64-unknown-linux-gnu.tar.gz' \
+                'ignored  openshell-sandbox-aarch64-unknown-linux-gnu.tar.gz' > "$out"
               ;;
             *)
               : > "$out"

@@ -19,7 +19,7 @@ function writeExecutable(target: string, contents: string) {
  * either exit early (version ok / too high) or hit the upgrade warn and then
  * the script tries to download — so we stub curl and gh to fail fast.
  */
-function runWithInstalledVersion(version: string) {
+function runWithInstalledVersion(version: string, extraEnv: NodeJS.ProcessEnv = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-openshell-ver-"));
   try {
     const fakeBin = path.join(tmp, "bin");
@@ -49,7 +49,12 @@ exit 1`,
     );
 
     return spawnSync("bash", [SCRIPT], {
-      env: { ...process.env, PATH: `${fakeBin}:/usr/bin:/bin` },
+      env: {
+        ...process.env,
+        NEMOCLAW_OPENSHELL_CHANNEL: "stable",
+        ...extraEnv,
+        PATH: `${fakeBin}:/usr/bin:/bin`,
+      },
       encoding: "utf8",
     });
   } finally {
@@ -95,6 +100,22 @@ describe("install-openshell.sh version check", { timeout: 15_000 }, () => {
     expect(result.stdout).toMatch(/above the maximum/);
   });
 
+  it("accepts an installed OpenShell dev-channel Docker-driver build", () => {
+    const result = runWithInstalledVersion("0.0.37.dev84+g6b2180425", {
+      NEMOCLAW_OPENSHELL_CHANNEL: "dev",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/dev channel/);
+  });
+
+  it("upgrades stable OpenShell when the dev channel is requested", () => {
+    const result = runWithInstalledVersion("0.0.36", {
+      NEMOCLAW_OPENSHELL_CHANNEL: "dev",
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toMatch(/required dev-channel Docker-driver build/);
+  });
+
   it("proceeds to install when openshell is not present", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-openshell-noop-"));
     try {
@@ -115,12 +136,16 @@ exit 1`,
       );
 
       const result = spawnSync("bash", [SCRIPT], {
-        env: { ...process.env, PATH: `${fakeBin}:/usr/bin:/bin` },
+        env: {
+          ...process.env,
+          NEMOCLAW_OPENSHELL_CHANNEL: "stable",
+          PATH: `${fakeBin}:/usr/bin:/bin`,
+        },
         encoding: "utf8",
       });
 
       // Should attempt install (not exit 0 early) and fail at the download step
-      expect(result.stdout).toMatch(/Installing openshell CLI/);
+      expect(result.stdout).toMatch(/Installing OpenShell from release/);
       expect(result.status).not.toBe(0);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

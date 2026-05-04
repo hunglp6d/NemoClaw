@@ -21,6 +21,12 @@ export interface SandboxEntry {
   nimContainer?: string | null;
   provider?: string | null;
   gpuEnabled?: boolean;
+  hostGpuDetected?: boolean;
+  sandboxGpuEnabled?: boolean;
+  sandboxGpuMode?: "auto" | "1" | "0" | string | null;
+  sandboxGpuDevice?: string | null;
+  openshellDriver?: string | null;
+  openshellVersion?: string | null;
   policies?: string[];
   customPolicies?: CustomPolicyEntry[];
   policyTier?: string | null;
@@ -189,6 +195,12 @@ export function registerSandbox(entry: SandboxEntry): void {
       nimContainer: entry.nimContainer || null,
       provider: entry.provider || null,
       gpuEnabled: entry.gpuEnabled || false,
+      hostGpuDetected: entry.hostGpuDetected === true,
+      sandboxGpuEnabled: entry.sandboxGpuEnabled === true,
+      sandboxGpuMode: entry.sandboxGpuMode || null,
+      sandboxGpuDevice: entry.sandboxGpuDevice || null,
+      openshellDriver: entry.openshellDriver || null,
+      openshellVersion: entry.openshellVersion || null,
       policies: entry.policies || [],
       policyTier: entry.policyTier || null,
       agent: entry.agent || null,

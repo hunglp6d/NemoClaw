@@ -47,6 +47,12 @@ type OnboardTestInternals = {
   buildCompatibleEndpointSandboxSmokeCommand: (model: string) => string;
   buildCompatibleEndpointSandboxSmokeScript: (model: string) => string;
   buildSandboxConfigSyncScript: ShimFn<string>;
+  buildSandboxGpuCreateArgs: (config: {
+    sandboxGpuEnabled: boolean;
+    sandboxGpuDevice?: string | null;
+  }) => string[];
+  buildDirectGpuPolicyYaml: (basePolicy: string) => string;
+  buildDirectSandboxGpuProofCommands: (sandboxName: string) => { label: string; args: string[] }[];
   classifySandboxCreateFailure: (output?: string) => { kind: string; uploadedToGateway: boolean };
   compactText: (value?: string) => string;
   computeSetupPresetSuggestions: ShimFn<string[]>;
@@ -66,6 +72,24 @@ type OnboardTestInternals = {
   getInstalledOpenshellVersion: (versionOutput?: string | null) => string | null;
   getBlueprintMinOpenshellVersion: (rootDir?: string) => string | null;
   getBlueprintMaxOpenshellVersion: (rootDir?: string) => string | null;
+  getDockerDriverGatewayEnv: (versionOutput?: string | null) => Record<string, string>;
+  isLinuxDockerDriverGatewayEnabled: (platform?: NodeJS.Platform) => boolean;
+  parseDockerCdiSpecDirs: (value?: string | null) => string[];
+  resolveSandboxGpuConfig: (
+    gpu: { type: string } | null,
+    options?: { flag?: "enable" | "disable" | null; device?: string | null; env?: NodeJS.ProcessEnv },
+  ) => {
+    mode: "auto" | "1" | "0";
+    hostGpuDetected: boolean;
+    sandboxGpuEnabled: boolean;
+    sandboxGpuDevice: string | null;
+    errors: string[];
+  };
+  shouldAllowOpenshellAboveBlueprintMax: (
+    versionOutput?: string | null,
+    platform?: NodeJS.Platform,
+    env?: NodeJS.ProcessEnv,
+  ) => boolean;
   versionGte: (left?: string | null, right?: string | null) => boolean;
   getRequestedModelHint: ShimFn<string | null>;
   getRequestedProviderHint: ShimFn<string | null>;
@@ -159,6 +183,9 @@ const {
   buildCompatibleEndpointSandboxSmokeCommand,
   buildCompatibleEndpointSandboxSmokeScript,
   buildSandboxConfigSyncScript,
+  buildSandboxGpuCreateArgs,
+  buildDirectGpuPolicyYaml,
+  buildDirectSandboxGpuProofCommands,
   classifySandboxCreateFailure,
   compactText,
   computeSetupPresetSuggestions,
@@ -171,6 +198,11 @@ const {
   getInstalledOpenshellVersion,
   getBlueprintMinOpenshellVersion,
   getBlueprintMaxOpenshellVersion,
+  getDockerDriverGatewayEnv,
+  isLinuxDockerDriverGatewayEnabled,
+  parseDockerCdiSpecDirs,
+  resolveSandboxGpuConfig,
+  shouldAllowOpenshellAboveBlueprintMax,
   versionGte,
   getRequestedModelHint,
   getRequestedProviderHint,
@@ -205,7 +237,93 @@ const {
   formatOnboardConfigSummary,
 } = onboardTestInternals;
 
+const repoRoot = path.join(import.meta.dirname, "..");
+
 describe("onboard helpers", () => {
+  it("resolves sandbox GPU auto/force/disable modes", () => {
+    const gpu = { type: "nvidia" };
+    expect(resolveSandboxGpuConfig(gpu, { env: {} }).sandboxGpuEnabled).toBe(true);
+    expect(
+      resolveSandboxGpuConfig(gpu, {
+        env: { NEMOCLAW_SANDBOX_GPU: "0" },
+      }).sandboxGpuEnabled,
+    ).toBe(false);
+    const forced = resolveSandboxGpuConfig(null, {
+      flag: "enable",
+      env: {},
+    });
+    expect(forced.mode).toBe("1");
+    expect(forced.errors.join("\n")).toContain("no NVIDIA GPU");
+  });
+
+  it("builds OpenShell sandbox GPU create args", () => {
+    expect(buildSandboxGpuCreateArgs({ sandboxGpuEnabled: false })).toEqual([]);
+    expect(buildSandboxGpuCreateArgs({ sandboxGpuEnabled: true })).toEqual(["--gpu"]);
+    expect(
+      buildSandboxGpuCreateArgs({ sandboxGpuEnabled: true, sandboxGpuDevice: "nvidia.com/gpu=0" }),
+    ).toEqual(["--gpu", "--gpu-device", "nvidia.com/gpu=0"]);
+  });
+
+  it("uses writable /proc only in the direct GPU policy variant", () => {
+    const basePolicy = fs.readFileSync(
+      path.join(repoRoot, "nemoclaw-blueprint", "policies", "openclaw-sandbox.yaml"),
+      "utf-8",
+    );
+    const gpuPolicy = buildDirectGpuPolicyYaml(basePolicy);
+    const baseReadOnly = basePolicy.slice(
+      basePolicy.indexOf("read_only:"),
+      basePolicy.indexOf("read_write:"),
+    );
+    const gpuReadOnly = gpuPolicy.slice(
+      gpuPolicy.indexOf("read_only:"),
+      gpuPolicy.indexOf("read_write:"),
+    );
+    const gpuReadWrite = gpuPolicy.slice(gpuPolicy.indexOf("read_write:"));
+    expect(baseReadOnly).toContain("- /proc");
+    expect(gpuReadOnly).not.toContain("- /proc");
+    expect(gpuReadWrite).toContain("- /proc");
+  });
+
+  it("models the Linux OpenShell Docker-driver gateway environment", () => {
+    expect(isLinuxDockerDriverGatewayEnabled("linux")).toBe(true);
+    expect(isLinuxDockerDriverGatewayEnabled("darwin")).toBe(false);
+    const env = getDockerDriverGatewayEnv("openshell 0.0.37.dev84+g6b2180425");
+    expect(env.OPENSHELL_DRIVERS).toBe("docker");
+    expect(env.OPENSHELL_GRPC_ENDPOINT).toBe("http://127.0.0.1:8080");
+    expect(env.OPENSHELL_CLUSTER_IMAGE).toBeUndefined();
+    expect(env.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toContain(":dev");
+  });
+
+  it("recognizes Docker CDI and dev-channel version gates", () => {
+    expect(parseDockerCdiSpecDirs('["/etc/cdi","/var/run/cdi"]')).toEqual([
+      "/etc/cdi",
+      "/var/run/cdi",
+    ]);
+    expect(parseDockerCdiSpecDirs("")).toEqual([]);
+    expect(
+      shouldAllowOpenshellAboveBlueprintMax("openshell 0.0.37.dev84+g6b2180425", "linux", {
+        NEMOCLAW_OPENSHELL_CHANNEL: "auto",
+      }),
+    ).toBe(true);
+    expect(
+      shouldAllowOpenshellAboveBlueprintMax("openshell 0.0.37", "linux", {
+        NEMOCLAW_OPENSHELL_CHANNEL: "auto",
+      }),
+    ).toBe(false);
+  });
+
+  it("builds direct sandbox GPU proof commands", () => {
+    const commands = buildDirectSandboxGpuProofCommands("alpha");
+    expect(commands.map((entry) => entry.label)).toEqual([
+      "nvidia-smi",
+      "/proc/self/task/<tid>/comm write",
+      "cuInit(0) via libcuda.so.1",
+    ]);
+    expect(commands[0].args).toEqual(["sandbox", "exec", "-n", "alpha", "--", "nvidia-smi"]);
+    expect(commands[1].args.join(" ")).toContain("/proc/self/task/${tid}/comm");
+    expect(commands[2].args.join(" ")).toContain("cuInit(0)");
+  });
+
   it("uses Hermes-oriented sandbox defaults when NemoHermes selects Hermes", () => {
     const previousSandboxName = process.env.NEMOCLAW_SANDBOX_NAME;
     try {
@@ -3006,7 +3124,7 @@ const { setupInference } = require(${onboardPath});
       source,
       // #2753: sandboxName is intentionally absent from the options here so
       // the session does not record a name before createSandbox completes.
-      /startRecordedStep\("sandbox", \{ provider, model \}\);\s*selectedMessagingChannels = await setupMessagingChannels\(\);\s*onboardSession\.updateSession\(\(current[^)]*\) => \{\s*current\.messagingChannels = selectedMessagingChannels;\s*return current;\s*\}\);[\s\S]*?sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*nextWebSearchConfig,\s*selectedMessagingChannels,\s*fromDockerfile,\s*agent,\s*opts\.controlUiPort \|\| null,\s*\);/,
+      /startRecordedStep\("sandbox", \{ provider, model \}\);\s*selectedMessagingChannels = await setupMessagingChannels\(\);\s*onboardSession\.updateSession\(\(current[^)]*\) => \{\s*current\.messagingChannels = selectedMessagingChannels;\s*return current;\s*\}\);[\s\S]*?sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*nextWebSearchConfig,\s*selectedMessagingChannels,\s*fromDockerfile,\s*agent,\s*opts\.controlUiPort \|\| null,\s*sandboxGpuConfig,\s*\);/,
     );
   });
 

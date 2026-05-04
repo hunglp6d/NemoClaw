@@ -198,8 +198,8 @@ describe("sandbox provisioning: procps debug tools (#2343)", () => {
       ]);
       expect(result.status).toBe(0);
       expect(calls).toContain("apt-get update");
-      expect(calls).toContain("procps=2:4.0.2-3");
-      expect(calls).toContain("openssh-sftp-server=1:9.2p1-2+deb12u9");
+      expect(calls).toContain("procps=2:4.0.4-9");
+      expect(calls).toContain("openssh-sftp-server=1:10.0p1-7+deb13u2");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -223,7 +223,7 @@ describe("sandbox provisioning: procps debug tools (#2343)", () => {
       `call_log=${JSON.stringify(log)}`,
       `ps_marker=${JSON.stringify(marker)}`,
       'apt-mark() { printf "apt-mark %s\\n" "$*" >> "$call_log"; }',
-      'apt-get() { printf "apt-get %s\\n" "$*" >> "$call_log"; if [[ "$*" == *"install"* && "$*" == *"procps=2:4.0.2-3"* ]]; then touch "$ps_marker"; fi; }',
+      'apt-get() { printf "apt-get %s\\n" "$*" >> "$call_log"; if [[ "$*" == *"install"* && "$*" == *"procps=2:4.0.4-9"* ]]; then touch "$ps_marker"; fi; }',
       'command() { if [ "${1:-}" = "-v" ] && [ "${2:-}" = "ps" ]; then [ -f "$ps_marker" ]; else builtin command "$@"; fi; }',
       'ps() { [ -f "$ps_marker" ] || return 127; printf "procps test version\\n"; }',
       command,
@@ -237,7 +237,7 @@ describe("sandbox provisioning: procps debug tools (#2343)", () => {
       expect(calls).toContain("apt-mark manual procps");
       expect(calls).toContain("apt-get autoremove --purge -y");
       expect(calls).toContain("apt-get update");
-      expect(calls).toContain("apt-get install -y --no-install-recommends procps=2:4.0.2-3");
+      expect(calls).toContain("apt-get install -y --no-install-recommends procps=2:4.0.4-9");
       expect(result.stdout).toContain("procps test version");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

@@ -13,6 +13,11 @@ import { ROOT, run, shellQuote, redact } from "./runner";
 import { dockerBuild, dockerImageInspect } from "./docker";
 import { loadAgent, resolveAgentName, type AgentDefinition } from "./agent-defs";
 import { getAgentBranding } from "./branding";
+import {
+  buildLocalBaseTag,
+  resolveSandboxBaseImage,
+  SANDBOX_BASE_TAG,
+} from "./sandbox-base-image";
 import { getProviderSelectionConfig } from "./inference-config";
 import * as onboardSession from "./onboard-session";
 import { sleepSeconds } from "./wait";
@@ -56,25 +61,42 @@ export function createAgentSandbox(agent: AgentDefinition): {
 } {
   const agentDockerfile = agent.dockerfilePath;
   const baseDockerfile = agent.dockerfileBasePath;
+  let baseImageRef: string | null = null;
 
   if (!agentDockerfile) {
     throw new Error(`${agent.displayName} is missing a sandbox Dockerfile`);
   }
 
   if (baseDockerfile) {
-    const baseImageTag = `ghcr.io/nvidia/nemoclaw/${agent.name}-sandbox-base:latest`;
-    const inspectResult = dockerImageInspect(baseImageTag, {
-      ignoreError: true,
-      suppressOutput: true,
+    const baseImageName = `ghcr.io/nvidia/nemoclaw/${agent.name}-sandbox-base`;
+    const baseImageTag = `${baseImageName}:${SANDBOX_BASE_TAG}`;
+    const resolved = resolveSandboxBaseImage({
+      imageName: baseImageName,
+      dockerfilePath: baseDockerfile,
+      localTag: buildLocalBaseTag(`nemoclaw-${agent.name}-sandbox-base-local`, ROOT),
+      envVar: `NEMOCLAW_${agent.name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_SANDBOX_BASE_IMAGE_REF`,
+      label: `${agent.displayName} sandbox base image`,
+      requireOpenshellSandboxAbi: process.platform === "linux",
+      rootDir: ROOT,
     });
-    if (inspectResult.status !== 0) {
-      console.log(`  Building ${agent.displayName} base image (first time only)...`);
-      dockerBuild(baseDockerfile, baseImageTag, ROOT, {
-        stdio: ["ignore", "inherit", "inherit"],
-      });
-      console.log(`  \u2713 Base image built: ${baseImageTag}`);
+    if (resolved) {
+      baseImageRef = resolved.ref;
+      console.log(`  Using ${agent.displayName} base image: ${baseImageRef}`);
     } else {
-      console.log(`  Base image exists: ${baseImageTag}`);
+      const inspectResult = dockerImageInspect(baseImageTag, {
+        ignoreError: true,
+        suppressOutput: true,
+      });
+      if (inspectResult.status !== 0) {
+        console.log(`  Building ${agent.displayName} base image (first time only)...`);
+        dockerBuild(baseDockerfile, baseImageTag, ROOT, {
+          stdio: ["ignore", "inherit", "inherit"],
+        });
+        console.log(`  \u2713 Base image built: ${baseImageTag}`);
+      } else {
+        console.log(`  Base image exists: ${baseImageTag}`);
+      }
+      baseImageRef = baseImageTag;
     }
   }
 
@@ -88,6 +110,13 @@ export function createAgentSandbox(agent: AgentDefinition): {
   });
   const stagedDockerfile = path.join(buildCtx, "Dockerfile");
   fs.copyFileSync(agentDockerfile, stagedDockerfile);
+  if (baseImageRef) {
+    const dockerfile = fs.readFileSync(stagedDockerfile, "utf8");
+    fs.writeFileSync(
+      stagedDockerfile,
+      dockerfile.replace(/^ARG BASE_IMAGE=.*$/m, `ARG BASE_IMAGE=${baseImageRef}`),
+    );
+  }
   console.log(`  Using ${agent.displayName} Dockerfile: ${agentDockerfile}`);
 
   return { buildCtx, stagedDockerfile };

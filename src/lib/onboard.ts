@@ -60,16 +60,22 @@ const {
   dockerContainerInspectFormat,
   dockerExecArgv,
   dockerImageInspect,
-  dockerImageInspectFormat,
   dockerInfo,
   dockerInfoFormat,
   dockerInspect,
-  dockerPull,
   dockerRemoveVolumesByPrefix,
   dockerRm,
   dockerRmi,
   dockerStop,
 } = docker;
+const sandboxBaseImage: typeof import("./sandbox-base-image") = require("./sandbox-base-image");
+const {
+  OPENCLAW_SANDBOX_BASE_IMAGE: SANDBOX_BASE_IMAGE,
+  SANDBOX_BASE_TAG,
+  defaultOpenclawBaseDockerfile,
+  buildLocalBaseTag,
+  resolveSandboxBaseImage,
+} = sandboxBaseImage;
 const errnoUtils: typeof import("./errno") = require("./errno");
 const { isErrnoException } = errnoUtils;
 
@@ -928,49 +934,30 @@ function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
   console.log(`  ✓ Docker CDI GPU support detected (${cdiSpecDirs.join(", ")})`);
 }
 
-// ── Base image digest resolution ────────────────────────────────
-// Pulls the sandbox-base image from GHCR and inspects it to get the
-// actual repo digest. This avoids the registry mismatch that broke
-// e2e tests in #1937 — the digest always comes from the same registry
-// we're pinning to. See #1904.
-
-const SANDBOX_BASE_IMAGE = "ghcr.io/nvidia/nemoclaw/sandbox-base";
-const SANDBOX_BASE_TAG = "latest";
+// ── Base image resolution ───────────────────────────────────────
+// Pulls candidate sandbox-base images from GHCR and inspects them to get the
+// actual repo digest when available. This avoids the registry mismatch that
+// broke e2e tests in #1937 while still allowing PR branches to use a source-SHA
+// base image or local build before latest has been rebuilt. See #1904.
 
 /**
- * Pull sandbox-base:latest from GHCR and resolve its repo digest.
- * Returns { digest, ref } on success, or null when the pull or
- * inspect fails (offline, GHCR outage, local-only build).
+ * Resolve a compatible sandbox-base image and pin it to a repo digest when
+ * possible. PR-branch validation first tries a source-SHA tag, then latest,
+ * and finally a local Dockerfile.base build when the OpenShell Docker driver
+ * requires a newer glibc than the published image provides.
  */
-function pullAndResolveBaseImageDigest(): { digest: string; ref: string } | null {
-  const imageWithTag = `${SANDBOX_BASE_IMAGE}:${SANDBOX_BASE_TAG}`;
-  const pullResult = dockerPull(imageWithTag, { ignoreError: true, suppressOutput: true });
-  if (pullResult.status !== 0) {
-    // Pull failed — caller should fall back to unpin :latest
-    return null;
-  }
-
-  const inspectOutput = dockerImageInspectFormat("{{json .RepoDigests}}", imageWithTag, {
-    ignoreError: true,
+function pullAndResolveBaseImageDigest(
+  options: { requireOpenshellSandboxAbi?: boolean } = {},
+): { digest: string | null; ref: string; source?: string; glibcVersion?: string | null } | null {
+  return resolveSandboxBaseImage({
+    imageName: SANDBOX_BASE_IMAGE,
+    dockerfilePath: defaultOpenclawBaseDockerfile(ROOT),
+    localTag: buildLocalBaseTag("nemoclaw-sandbox-base-local", ROOT),
+    envVar: "NEMOCLAW_SANDBOX_BASE_IMAGE_REF",
+    label: "OpenClaw sandbox base image",
+    requireOpenshellSandboxAbi: options.requireOpenshellSandboxAbi === true,
+    rootDir: ROOT,
   });
-  if (!inspectOutput) return null;
-
-  // RepoDigests is a JSON array like ["ghcr.io/nvidia/nemoclaw/sandbox-base@sha256:abc..."].
-  // Filter to the entry matching our registry — index ordering is not guaranteed.
-  let repoDigests;
-  try {
-    repoDigests = JSON.parse(inspectOutput || "[]");
-  } catch {
-    return null;
-  }
-  const repoDigest = Array.isArray(repoDigests)
-    ? repoDigests.find((entry) => entry.startsWith(`${SANDBOX_BASE_IMAGE}@sha256:`))
-    : null;
-  if (!repoDigest) return null;
-
-  const digest = repoDigest.slice(repoDigest.indexOf("@") + 1);
-  const ref = `${SANDBOX_BASE_IMAGE}@${digest}`;
-  return { digest, ref };
 }
 
 function getStableGatewayImageRef(versionOutput: string | null = null): string | null {
@@ -5285,9 +5272,13 @@ async function createSandbox(
   // Pull the base image and resolve its digest so the Dockerfile is pinned to
   // exactly what we just fetched. This prevents stale :latest tags from
   // silently reusing a cached old image after NemoClaw upgrades (#1904).
-  const resolved = pullAndResolveBaseImageDigest();
-  if (resolved) {
+  const resolved = pullAndResolveBaseImageDigest({
+    requireOpenshellSandboxAbi: isLinuxDockerDriverGatewayEnabled(),
+  });
+  if (resolved?.digest) {
     console.log(`  Pinning base image to ${resolved.digest.slice(0, 19)}...`);
+  } else if (resolved) {
+    console.log(`  Using sandbox base image ${resolved.ref}`);
   } else {
     // Check if the image exists locally before falling back to unpinned :latest.
     // On a first-time install behind a firewall with no cached image, warn early

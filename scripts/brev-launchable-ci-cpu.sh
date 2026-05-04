@@ -12,7 +12,7 @@
 #   2. Node.js 22 (nodesource)
 #   3. OpenShell CLI binary (pinned release)
 #   4. NemoClaw repo cloned with npm deps installed and TS plugin built
-#   5. Docker images pre-pulled (sandbox-base, openshell/cluster, node:22-slim)
+#   5. Docker images pre-pulled (sandbox-base, openshell/cluster, node:22-trixie-slim)
 #
 # What this does NOT install (intentionally):
 #   - code-server (not needed for automated CI)
@@ -53,7 +53,7 @@ SENTINEL="/var/run/nemoclaw-launchable-ready"
 # timeouts when pulled during CI runs.
 DOCKER_IMAGES=(
   "ghcr.io/nvidia/nemoclaw/sandbox-base:latest"
-  "node:22-slim"
+  "node:22-trixie-slim"
 )
 
 # ── Suppress apt noise ───────────────────────────────────────────────

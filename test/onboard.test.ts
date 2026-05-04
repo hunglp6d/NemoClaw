@@ -75,6 +75,19 @@ type OnboardTestInternals = {
   getBlueprintMaxOpenshellVersion: (rootDir?: string) => string | null;
   getDockerDriverGatewayEnv: (versionOutput?: string | null) => Record<string, string>;
   isLinuxDockerDriverGatewayEnabled: (platform?: NodeJS.Platform) => boolean;
+  isDockerDriverGatewayPortListener: (
+    portCheck: {
+      ok: boolean;
+      process?: string;
+      pid?: number | null;
+    },
+    opts?: {
+      platform?: NodeJS.Platform;
+      gatewayBin?: string | null;
+      isPidAliveFn?: (pid: number) => boolean;
+      isDockerDriverGatewayProcessFn?: (pid: number, gatewayBin?: string | null) => boolean;
+    },
+  ) => boolean;
   parseDockerCdiSpecDirs: (value?: string | null) => string[];
   resolveSandboxGpuConfig: (
     gpu: { type: string } | null,
@@ -164,6 +177,7 @@ function isOnboardTestInternals(
     typeof value.classifySandboxCreateFailure === "function" &&
     typeof value.getDockerDriverGatewayEnv === "function" &&
     typeof value.isLinuxDockerDriverGatewayEnabled === "function" &&
+    typeof value.isDockerDriverGatewayPortListener === "function" &&
     typeof value.parseDockerCdiSpecDirs === "function" &&
     typeof value.resolveSandboxGpuConfig === "function" &&
     typeof value.shouldAllowOpenshellAboveBlueprintMax === "function" &&
@@ -209,6 +223,7 @@ const {
   getBlueprintMaxOpenshellVersion,
   getDockerDriverGatewayEnv,
   isLinuxDockerDriverGatewayEnabled,
+  isDockerDriverGatewayPortListener,
   parseDockerCdiSpecDirs,
   resolveSandboxGpuConfig,
   shouldAllowOpenshellAboveBlueprintMax,
@@ -295,6 +310,34 @@ describe("onboard helpers", () => {
     expect(env.OPENSHELL_GRPC_ENDPOINT).toBe("http://127.0.0.1:8080");
     expect(env.OPENSHELL_CLUSTER_IMAGE).toBeUndefined();
     expect(env.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toContain(":dev");
+  });
+
+  it("recognizes an existing Docker-driver gateway listener on Linux", () => {
+    const opts = {
+      platform: "linux" as NodeJS.Platform,
+      isPidAliveFn: (pid: number) => pid === 1234,
+      isDockerDriverGatewayProcessFn: (pid: number, gatewayBin?: string | null) =>
+        pid === 1234 && gatewayBin === "/opt/openshell/openshell-gateway",
+      gatewayBin: "/opt/openshell/openshell-gateway",
+    };
+    expect(
+      isDockerDriverGatewayPortListener({ ok: false, process: "openshell", pid: 1234 }, opts),
+    ).toBe(true);
+    expect(
+      isDockerDriverGatewayPortListener({ ok: false, process: "node", pid: 1234 }, opts),
+    ).toBe(false);
+    expect(
+      isDockerDriverGatewayPortListener(
+        { ok: false, process: "openshell", pid: 1234 },
+        { ...opts, platform: "darwin" },
+      ),
+    ).toBe(false);
+    expect(
+      isDockerDriverGatewayPortListener(
+        { ok: false, process: "openshell", pid: 4321 },
+        { ...opts, isPidAliveFn: () => false },
+      ),
+    ).toBe(false);
   });
 
   it("recognizes Docker CDI and dev-channel version gates", () => {

@@ -3031,7 +3031,37 @@ function getDockerDriverGatewayPid(): number | null {
   }
 }
 
-function isDockerDriverGatewayProcess(pid: number, gatewayBin?: string | null): boolean {
+function readProcessEnv(pid: number): Record<string, string> {
+  const procEnvPath = `/proc/${pid}/environ`;
+  const env: Record<string, string> = {};
+  try {
+    if (!fs.existsSync(procEnvPath)) return env;
+    for (const entry of fs.readFileSync(procEnvPath, "utf-8").split("\0")) {
+      if (!entry) continue;
+      const idx = entry.indexOf("=");
+      if (idx <= 0) continue;
+      env[entry.slice(0, idx)] = entry.slice(idx + 1);
+    }
+  } catch {
+    return {};
+  }
+  return env;
+}
+
+function hasDockerDriverGatewayEnv(pid: number): boolean {
+  const env = readProcessEnv(pid);
+  return (
+    env.OPENSHELL_DRIVERS === "docker" ||
+    Boolean(env.OPENSHELL_DOCKER_SUPERVISOR_IMAGE) ||
+    env.OPENSHELL_GRPC_ENDPOINT === getDockerDriverGatewayEndpoint()
+  );
+}
+
+function isDockerDriverGatewayProcess(
+  pid: number,
+  gatewayBin?: string | null,
+  opts: { requireDockerDriverEnv?: boolean } = {},
+): boolean {
   const procCmdlinePath = `/proc/${pid}/cmdline`;
   let identity = "";
   try {
@@ -3045,15 +3075,59 @@ function isDockerDriverGatewayProcess(pid: number, gatewayBin?: string | null): 
     identity = captureProcessArgs(pid);
   }
   if (!identity) return false;
-  return (
+  const matchesGatewayBinary =
     identity.includes("openshell-gateway") ||
-    (typeof gatewayBin === "string" && gatewayBin.length > 0 && identity.includes(gatewayBin))
-  );
+    (typeof gatewayBin === "string" && gatewayBin.length > 0 && identity.includes(gatewayBin));
+  if (!matchesGatewayBinary) return false;
+  if (opts.requireDockerDriverEnv && !hasDockerDriverGatewayEnv(pid)) return false;
+  return true;
 }
 
 function isDockerDriverGatewayProcessAlive(): boolean {
   const pid = getDockerDriverGatewayPid();
   return pid !== null && isPidAlive(pid);
+}
+
+function rememberDockerDriverGatewayPid(pid: number): void {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const stateDir = getDockerDriverGatewayStateDir();
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(getDockerDriverGatewayPidFile(), `${pid}\n`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+}
+
+function getDockerDriverGatewayPortListenerPid(
+  portCheck: import("./preflight").PortProbeResult,
+  opts: {
+    platform?: NodeJS.Platform;
+    gatewayBin?: string | null;
+    isPidAliveFn?: (pid: number) => boolean;
+    isDockerDriverGatewayProcessFn?: (pid: number, gatewayBin?: string | null) => boolean;
+  } = {},
+): number | null {
+  if (portCheck.ok) return null;
+  if (!isLinuxDockerDriverGatewayEnabled(opts.platform ?? process.platform)) return null;
+  const pid = Number(portCheck.pid);
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  const proc = String(portCheck.process || "").toLowerCase();
+  if (proc !== "openshell" && proc !== "openshell-gateway") return null;
+  const alive = opts.isPidAliveFn ?? isPidAlive;
+  if (!alive(pid)) return null;
+  const isGateway =
+    opts.isDockerDriverGatewayProcessFn ??
+    ((candidatePid: number, gatewayBin?: string | null) =>
+      isDockerDriverGatewayProcess(candidatePid, gatewayBin, { requireDockerDriverEnv: true }));
+  if (!isGateway(pid, opts.gatewayBin)) return null;
+  return pid;
+}
+
+function isDockerDriverGatewayPortListener(
+  portCheck: import("./preflight").PortProbeResult,
+  opts: Parameters<typeof getDockerDriverGatewayPortListenerPid>[1] = {},
+): boolean {
+  return getDockerDriverGatewayPortListenerPid(portCheck, opts) !== null;
 }
 
 function writeDockerGatewayDebEnvOverride(): void {
@@ -3723,6 +3797,16 @@ async function preflight(
         );
         continue;
       }
+      if (port === GATEWAY_PORT) {
+        const dockerGatewayPid = getDockerDriverGatewayPortListenerPid(portCheck);
+        if (dockerGatewayPid !== null) {
+          rememberDockerDriverGatewayPid(dockerGatewayPid);
+          console.log(
+            `  ✓ Port ${port} already owned by NemoClaw OpenShell Docker gateway (${label})`,
+          );
+          continue;
+        }
+      }
       // Auto-cleanup orphaned SSH port-forward from a previous NemoClaw session
       // (e.g. dashboard forward left behind after destroy). Only kill the process
       // if its command line contains "openshell" to avoid killing unrelated SSH
@@ -4067,6 +4151,23 @@ async function startDockerDriverGateway({
   }
 
   const gatewayBin = resolveOpenShellGatewayBinary();
+  const portCheck = await checkPortAvailable(GATEWAY_PORT);
+  const portListenerPid = getDockerDriverGatewayPortListenerPid(portCheck, { gatewayBin });
+  if (portListenerPid !== null) {
+    rememberDockerDriverGatewayPid(portListenerPid);
+    registerDockerDriverGatewayEndpoint();
+    const adoptedStatus = runCaptureOpenshell(["status"], { ignoreError: true });
+    const adoptedGwInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], {
+      ignoreError: true,
+    });
+    const adoptedActiveGatewayInfo = runCaptureOpenshell(["gateway", "info"], {
+      ignoreError: true,
+    });
+    if (isGatewayHealthy(adoptedStatus, adoptedGwInfo, adoptedActiveGatewayInfo)) {
+      console.log(`  ✓ Reusing existing Docker-driver gateway process (PID ${portListenerPid})`);
+      return;
+    }
+  }
   if (!gatewayBin) {
     console.error("  OpenShell Docker-driver gateway binary not found.");
     console.error("  Install the OpenShell dev channel, or set NEMOCLAW_OPENSHELL_GATEWAY_BIN.");
@@ -4074,7 +4175,7 @@ async function startDockerDriverGateway({
     throw new Error("OpenShell gateway binary not found");
   }
 
-  const existingPid = getDockerDriverGatewayPid();
+  const existingPid = getDockerDriverGatewayPid() ?? portListenerPid;
   if (existingPid !== null && isPidAlive(existingPid)) {
     if (!isDockerDriverGatewayProcess(existingPid, gatewayBin)) {
       fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
@@ -4112,10 +4213,7 @@ async function startDockerDriverGateway({
   if (childPid <= 0) {
     throw new Error("OpenShell gateway process did not return a pid");
   }
-  fs.writeFileSync(getDockerDriverGatewayPidFile(), `${childPid}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  rememberDockerDriverGatewayPid(childPid);
 
   const pollCount = envInt("NEMOCLAW_HEALTH_POLL_COUNT", 30);
   const pollInterval = envInt("NEMOCLAW_HEALTH_POLL_INTERVAL", 2);
@@ -9855,6 +9953,7 @@ module.exports = {
   getGatewayClusterContainerState,
   getGatewayHealthWaitConfig,
   getGatewayReuseState,
+  isDockerDriverGatewayPortListener,
   getNavigationChoice,
   getSandboxInferenceConfig,
   getInstalledOpenshellVersion,

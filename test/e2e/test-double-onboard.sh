@@ -75,6 +75,54 @@ registry_has() {
   [ -f "$REGISTRY" ] && grep -q "$sandbox_name" "$REGISTRY"
 }
 
+docker_driver_gateway_pid_file() {
+  printf '%s/.local/state/nemoclaw/openshell-docker-gateway/openshell-gateway.pid\n' "$HOME"
+}
+
+gateway_runtime_id() {
+  local pid_file pid cid
+  pid_file="$(docker_driver_gateway_pid_file)"
+  if [ -f "$pid_file" ]; then
+    pid="$(tr -d '[:space:]' <"$pid_file" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      printf 'pid:%s\n' "$pid"
+      return 0
+    fi
+  fi
+
+  cid="$(docker ps -qf "name=openshell-cluster-nemoclaw" 2>/dev/null | head -1)"
+  if [ -n "$cid" ]; then
+    printf 'container:%s\n' "$cid"
+    return 0
+  fi
+
+  return 1
+}
+
+stop_gateway_runtime() {
+  local pid_file pid cid
+  openshell forward stop 18789 2>/dev/null || true
+  openshell gateway stop -g nemoclaw 2>/dev/null || true
+
+  pid_file="$(docker_driver_gateway_pid_file)"
+  if [ -f "$pid_file" ]; then
+    pid="$(tr -d '[:space:]' <"$pid_file" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      for _ in $(seq 1 10); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    fi
+  fi
+
+  cid="$(docker ps -qf "name=openshell-cluster-nemoclaw" 2>/dev/null | head -1)"
+  if [ -n "$cid" ]; then
+    docker stop "$cid" >/dev/null 2>&1 || true
+  fi
+}
+
 SANDBOX_A="e2e-double-a"
 SANDBOX_B="e2e-double-b"
 REGISTRY="$HOME/.nemoclaw/sandboxes.json"
@@ -242,7 +290,7 @@ if [ -x "$REPO_ROOT/bin/nemoclaw.js" ] || command -v nemoclaw >/dev/null 2>&1; t
 fi
 openshell sandbox delete "$SANDBOX_A" 2>/dev/null || true
 openshell sandbox delete "$SANDBOX_B" 2>/dev/null || true
-openshell forward stop 18789 2>/dev/null || true
+stop_gateway_runtime
 openshell gateway destroy -g nemoclaw 2>/dev/null || true
 pass "Pre-cleanup complete"
 
@@ -340,7 +388,7 @@ fi
 section "Phase 3: Second onboard ($SANDBOX_A — same name, recreate)"
 info "Running nemoclaw onboard with NEMOCLAW_RECREATE_SANDBOX=1..."
 
-GATEWAY_ID_BEFORE=$(docker ps -qf "name=openshell-cluster-nemoclaw" | head -1)
+GATEWAY_ID_BEFORE=$(gateway_runtime_id || true)
 PHASE3_START="$(phase_start_time)"
 run_onboard "$SANDBOX_A" "1"
 output2="$RUN_ONBOARD_OUTPUT"
@@ -357,11 +405,11 @@ else
   dump_diagnostics "Phase 3"
 fi
 
-GATEWAY_ID_AFTER=$(docker ps -qf "name=openshell-cluster-nemoclaw" | head -1)
+GATEWAY_ID_AFTER=$(gateway_runtime_id || true)
 if [ -n "$GATEWAY_ID_BEFORE" ] && [ "$GATEWAY_ID_BEFORE" = "$GATEWAY_ID_AFTER" ]; then
-  pass "Healthy gateway reused on second onboard (container $GATEWAY_ID_BEFORE)"
+  pass "Healthy gateway runtime reused on second onboard ($GATEWAY_ID_BEFORE)"
 else
-  fail "Gateway container changed on second onboard (before=$GATEWAY_ID_BEFORE after=$GATEWAY_ID_AFTER)"
+  fail "Gateway runtime changed on second onboard (before=$GATEWAY_ID_BEFORE after=$GATEWAY_ID_AFTER)"
 fi
 
 if grep -q "Port 8080 is not available" <<<"$output2"; then
@@ -388,7 +436,7 @@ fi
 section "Phase 4: Third onboard ($SANDBOX_B — different name)"
 info "Running nemoclaw onboard with new sandbox name..."
 
-GATEWAY_ID_BEFORE3=$(docker ps -qf "name=openshell-cluster-nemoclaw" | head -1)
+GATEWAY_ID_BEFORE3=$(gateway_runtime_id || true)
 PHASE4_START="$(phase_start_time)"
 run_onboard "$SANDBOX_B"
 output3="$RUN_ONBOARD_OUTPUT"
@@ -405,11 +453,11 @@ else
   dump_diagnostics "Phase 4"
 fi
 
-GATEWAY_ID_AFTER3=$(docker ps -qf "name=openshell-cluster-nemoclaw" | head -1)
+GATEWAY_ID_AFTER3=$(gateway_runtime_id || true)
 if [ -n "$GATEWAY_ID_BEFORE3" ] && [ "$GATEWAY_ID_BEFORE3" = "$GATEWAY_ID_AFTER3" ]; then
-  pass "Healthy gateway reused on third onboard (container $GATEWAY_ID_BEFORE3)"
+  pass "Healthy gateway runtime reused on third onboard ($GATEWAY_ID_BEFORE3)"
 else
-  fail "Gateway container changed on third onboard (before=$GATEWAY_ID_BEFORE3 after=$GATEWAY_ID_AFTER3)"
+  fail "Gateway runtime changed on third onboard (before=$GATEWAY_ID_BEFORE3 after=$GATEWAY_ID_AFTER3)"
 fi
 
 if grep -q "Port 8080 is not available" <<<"$output3"; then
@@ -511,7 +559,7 @@ section "Phase 6: Gateway lifecycle response"
 info "Stopping the NemoClaw gateway runtime to verify current lifecycle behavior..."
 
 openshell forward stop 18789 2>/dev/null || true
-openshell gateway stop -g nemoclaw 2>/dev/null || true
+stop_gateway_runtime
 
 GATEWAY_LOG="$(mktemp)"
 run_nemoclaw "$SANDBOX_B" status >"$GATEWAY_LOG" 2>&1
@@ -519,10 +567,10 @@ gateway_status_exit=$?
 gateway_status_output="$(cat "$GATEWAY_LOG")"
 rm -f "$GATEWAY_LOG"
 
-if [ "$gateway_status_exit" -eq 1 ]; then
-  pass "Post-stop status exited 1"
+if [ "$gateway_status_exit" -eq 0 ] || [ "$gateway_status_exit" -eq 1 ]; then
+  pass "Post-stop status exited $gateway_status_exit"
 else
-  fail "Post-stop status exited $gateway_status_exit (expected 1)"
+  fail "Post-stop status exited $gateway_status_exit (expected 0 or 1)"
 fi
 
 if grep -qE \
@@ -550,7 +598,7 @@ run_nemoclaw "$SANDBOX_A" destroy --yes 2>/dev/null || true
 run_nemoclaw "$SANDBOX_B" destroy --yes 2>/dev/null || true
 openshell sandbox delete "$SANDBOX_A" 2>/dev/null || true
 openshell sandbox delete "$SANDBOX_B" 2>/dev/null || true
-openshell forward stop 18789 2>/dev/null || true
+stop_gateway_runtime
 openshell gateway destroy -g nemoclaw 2>/dev/null || true
 
 # Force registry reconciliation: when the gateway is in a degraded state

@@ -294,6 +294,7 @@ else
   fail "Sandbox nvidia-smi failed"
 fi
 
+# shellcheck disable=SC2016  # expanded inside the sandbox by sh -lc
 if openshell sandbox exec -n "$SANDBOX_NAME" -- sh -lc \
   'tid="$(ls /proc/self/task | head -n 1)"; old="$(cat "/proc/self/task/${tid}/comm" 2>/dev/null || true)"; printf nemoclaw-gpu >"/proc/self/task/${tid}/comm"; [ -z "$old" ] || printf "%s" "$old" >"/proc/self/task/${tid}/comm" || true' >/dev/null 2>&1; then
   pass "Sandbox /proc/self/task/<tid>/comm write works"

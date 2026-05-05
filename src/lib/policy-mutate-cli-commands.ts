@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* v8 ignore start -- thin oclif adapters covered through CLI integration tests. */
-
 import { Args, Command, Flags } from "@oclif/core";
 
 type PolicyRuntimeBridge = {
@@ -66,8 +64,14 @@ export class PolicyAddCommand extends Command {
     yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
     force: Flags.boolean({ description: "Skip the confirmation prompt" }),
     "dry-run": Flags.boolean({ description: "Preview without applying" }),
-    "from-file": Flags.string({ description: "Load one custom preset YAML file" }),
-    "from-dir": Flags.string({ description: "Load all custom preset YAML files in a directory" }),
+    "from-file": Flags.string({
+      description: "Load one custom preset YAML file",
+      exclusive: ["from-dir"],
+    }),
+    "from-dir": Flags.string({
+      description: "Load all custom preset YAML files in a directory",
+      exclusive: ["from-file"],
+    }),
   };
 
   public async run(): Promise<void> {

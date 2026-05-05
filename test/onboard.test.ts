@@ -2015,6 +2015,13 @@ startGateway(null).catch(() => {});
         "my-assistant   NotReady   init failed",
       ),
     ).toBe("not_ready");
+    expect(
+      getSandboxStateFromOutputs(
+        "my-assistant",
+        "Error: NotFound: sandbox not found",
+        "other-sandbox   Ready   2m ago",
+      ),
+    ).toBe("missing");
     expect(getSandboxStateFromOutputs("my-assistant", "", "")).toBe("missing");
   });
 

@@ -75,6 +75,26 @@ registry_has() {
   [ -f "$REGISTRY" ] && grep -q "$sandbox_name" "$REGISTRY"
 }
 
+wait_openshell_sandbox_absent() {
+  local sandbox_name="$1"
+  local timeout="${2:-60}"
+  local deadline=$((SECONDS + timeout))
+  local output status
+
+  while [ "$SECONDS" -le "$deadline" ]; do
+    output="$(openshell sandbox get "$sandbox_name" 2>&1)"
+    status=$?
+    if [ "$status" -ne 0 ] && grep -qiE 'NotFound|Not Found|sandbox not found' <<<"$output"; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  info "OpenShell still reports sandbox '$sandbox_name' after ${timeout}s:"
+  printf '%s\n' "$output" | sed 's/^/    /'
+  return 1
+}
+
 docker_driver_gateway_pid_file() {
   printf '%s/.local/state/nemoclaw/openshell-docker-gateway/openshell-gateway.pid\n' "$HOME"
 }
@@ -125,6 +145,7 @@ stop_gateway_runtime() {
 
 SANDBOX_A="e2e-double-a"
 SANDBOX_B="e2e-double-b"
+INSTALL_SANDBOX_NAME="${NEMOCLAW_E2E_INSTALL_SANDBOX_NAME:-}"
 REGISTRY="$HOME/.nemoclaw/sandboxes.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -285,8 +306,14 @@ PY
 section "Phase 0: Pre-cleanup"
 info "Destroying any leftover test sandboxes/gateway from previous runs..."
 if [ -x "$REPO_ROOT/bin/nemoclaw.js" ] || command -v nemoclaw >/dev/null 2>&1; then
+  if [ -n "$INSTALL_SANDBOX_NAME" ]; then
+    run_nemoclaw "$INSTALL_SANDBOX_NAME" destroy --yes 2>/dev/null || true
+  fi
   run_nemoclaw "$SANDBOX_A" destroy --yes 2>/dev/null || true
   run_nemoclaw "$SANDBOX_B" destroy --yes 2>/dev/null || true
+fi
+if [ -n "$INSTALL_SANDBOX_NAME" ]; then
+  openshell sandbox delete "$INSTALL_SANDBOX_NAME" 2>/dev/null || true
 fi
 openshell sandbox delete "$SANDBOX_A" 2>/dev/null || true
 openshell sandbox delete "$SANDBOX_B" 2>/dev/null || true
@@ -521,6 +548,11 @@ section "Phase 5: Stale registry reconciliation"
 info "Deleting '$SANDBOX_A' directly in OpenShell to leave a stale NemoClaw registry entry..."
 
 openshell sandbox delete "$SANDBOX_A" 2>/dev/null || true
+if wait_openshell_sandbox_absent "$SANDBOX_A" 60; then
+  pass "OpenShell reports '$SANDBOX_A' absent after direct deletion"
+else
+  fail "OpenShell still reports '$SANDBOX_A' after direct deletion"
+fi
 
 if registry_has "$SANDBOX_A"; then
   pass "Registry still contains stale '$SANDBOX_A' entry"
@@ -596,8 +628,14 @@ section "Phase 7: Final cleanup"
 
 run_nemoclaw "$SANDBOX_A" destroy --yes 2>/dev/null || true
 run_nemoclaw "$SANDBOX_B" destroy --yes 2>/dev/null || true
+if [ -n "$INSTALL_SANDBOX_NAME" ]; then
+  run_nemoclaw "$INSTALL_SANDBOX_NAME" destroy --yes 2>/dev/null || true
+fi
 openshell sandbox delete "$SANDBOX_A" 2>/dev/null || true
 openshell sandbox delete "$SANDBOX_B" 2>/dev/null || true
+if [ -n "$INSTALL_SANDBOX_NAME" ]; then
+  openshell sandbox delete "$INSTALL_SANDBOX_NAME" 2>/dev/null || true
+fi
 stop_gateway_runtime
 openshell gateway destroy -g nemoclaw 2>/dev/null || true
 

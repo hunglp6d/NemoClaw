@@ -930,6 +930,8 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("USAGE");
     expect(r.out).toContain("nemoclaw onboard");
     expect(r.out).toContain("--from <Dockerfile>");
+    expect(r.out).toContain("--yes");
+    expect(r.out).toContain("--sandbox-gpu-device <device>");
   });
 
   it("unknown onboard option exits 1", () => {
@@ -950,6 +952,32 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("Nonexistent flag: --non-interactiv");
   });
 
+  it("accepts install automation --yes in onboard CLI parsing", () => {
+    const r = run("onboard --resume --non-interactive --yes-i-accept-third-party-software --yes");
+    expect(r.code).toBe(1);
+    expect(r.out.includes("No resumable onboarding session was found")).toBeTruthy();
+    expect(r.out).not.toContain("Nonexistent flag: --yes");
+  });
+
+  it("passes onboard sandbox GPU flags to legacy validation", () => {
+    const r = run(
+      "onboard --sandbox-gpu --no-sandbox-gpu --non-interactive --yes-i-accept-third-party-software --yes",
+    );
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("--sandbox-gpu and --no-sandbox-gpu are mutually exclusive");
+    expect(r.out).not.toContain("Nonexistent flag: --sandbox-gpu");
+    expect(r.out).not.toContain("Nonexistent flag: --no-sandbox-gpu");
+  });
+
+  it("passes onboard sandbox GPU device flags to legacy validation", () => {
+    const r = run(
+      "onboard --sandbox-gpu-device nvidia.com/gpu=0 --no-sandbox-gpu --non-interactive --yes-i-accept-third-party-software --yes",
+    );
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("--sandbox-gpu-device cannot be used with --no-sandbox-gpu");
+    expect(r.out).not.toContain("Nonexistent flag: --sandbox-gpu-device");
+  });
+
   it("setup --help exits 0 and shows onboard usage", () => {
     const r = run("setup --help");
     expect(r.code).toBe(0);
@@ -965,14 +993,14 @@ describe("CLI dispatch", () => {
   });
 
   it("setup forwards --resume into onboard parsing", () => {
-    const r = run("setup --resume --non-interactive --yes-i-accept-third-party-software");
+    const r = run("setup --resume --non-interactive --yes-i-accept-third-party-software --yes");
     expect(r.code).toBe(1);
     expect(r.out.includes("deprecated")).toBeTruthy();
     expect(r.out.includes("No resumable onboarding session was found")).toBeTruthy();
   });
 
   it("resume rejection clarifies --resume semantics and points to onboard (#2281)", () => {
-    const r = run("onboard --resume --non-interactive --yes-i-accept-third-party-software");
+    const r = run("onboard --resume --non-interactive --yes-i-accept-third-party-software --yes");
     expect(r.code).toBe(1);
     expect(r.out.includes("No resumable onboarding session was found")).toBeTruthy();
     expect(r.out.includes("--resume only continues an interrupted onboarding run")).toBeTruthy();
@@ -1140,7 +1168,9 @@ describe("CLI dispatch", () => {
   });
 
   it("setup-spark is a deprecated compatibility alias for onboard", () => {
-    const r = run("setup-spark --resume --non-interactive --yes-i-accept-third-party-software");
+    const r = run(
+      "setup-spark --resume --non-interactive --yes-i-accept-third-party-software --yes",
+    );
     expect(r.code).toBe(1);
     expect(r.out.includes("setup-spark` is deprecated")).toBeTruthy();
     expect(r.out.includes("Use `nemoclaw onboard` instead")).toBeTruthy();

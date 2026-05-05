@@ -68,7 +68,10 @@ function buildOnboardFlags(): Record<string, any> {
       max: 65535,
       min: 1024,
     }),
-    yes: Flags.boolean({ char: "y", description: "Skip confirmation prompts" }),
+    yes: Flags.boolean({
+      char: "y",
+      description: "Auto-accept the Ollama model-download size confirmation",
+    }),
     [acceptFlagName]: Flags.boolean({ description: "Accept the third-party software notice" }),
   } as Record<string, any>;
 }

@@ -117,7 +117,7 @@ function getProbeProcessTimeoutMs(args) {
   return (getCurlMaxTimeSeconds(args) + 5) * 1000;
 }
 
-const RETRIABLE_HTTP_PROBE_STATUSES = new Set([429]);
+const RETRIABLE_HTTP_PROBE_STATUSES = new Set([429, 502, 503]);
 const HTTP_PROBE_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
 
 function sleepSync(ms) {

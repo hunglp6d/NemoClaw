@@ -1,0 +1,84 @@
+name: custom-e2e
+
+on:
+  push:
+    branches: [fix/nightly-e2e-retry-503-inference-probe-89aebda-custom-e2e]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sandbox-operations-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Start gateway log streamer (background)
+        run: |
+          mkdir -p docker-logs
+          nohup bash -c '
+            export PATH="$HOME/.local/bin:$PATH"
+            while sleep 5; do
+              if ! docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^openshell-cluster-nemoclaw$"; then
+                continue
+              fi
+              docker exec openshell-cluster-nemoclaw kubectl get pods -A --no-headers >docker-logs/_pods.txt 2>&1
+              registry="$HOME/.nemoclaw/sandboxes.json"
+              [ -f "$registry" ] || continue
+              live=$(jq -r ".sandboxes // {} | keys[]?" "$registry" 2>/dev/null)
+              for name in $live; do
+                case "$name" in
+                  *[!a-z0-9_-]*|"") continue ;;
+                esac
+                pod_match=$(awk -v n="$name" "\$1==n || \$2==n || \$1==\"sandbox-\" n || \$2==\"sandbox-\" n {print \$1\"/\"\$2; exit}" docker-logs/_pods.txt)
+                if [ -z "$pod_match" ]; then
+                  pod_match=$(awk -v n="$name" "index(\$2,n)>0 {print \$1\"/\"\$2; exit}" docker-logs/_pods.txt)
+                fi
+                if [ -z "$pod_match" ]; then continue; fi
+                pod_ns="${pod_match%%/*}"
+                pod_name="${pod_match##*/}"
+                docker exec openshell-cluster-nemoclaw kubectl exec -n "$pod_ns" "$pod_name" -- bash -c "
+                  for f in /sandbox/.openclaw/logs/gateway-persistent.log /tmp/gateway.log /tmp/openclaw-*/openclaw-*.log; do
+                    [ -f \"\$f\" ] || continue
+                    printf \"\\n----- %s (size=%s) -----\\n\" \"\$f\" \"\$(stat -c%s \"\$f\" 2>/dev/null || echo ?)\"
+                    cat -- \"\$f\" 2>/dev/null
+                  done
+                " > "docker-logs/sandbox-${name}.log" 2>&1
+              done
+            done
+          ' >/dev/null 2>&1 &
+          echo $! > /tmp/gateway-log-streamer.pid
+
+      - name: Run sandbox operations E2E test
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_POLICY_TIER: "open"
+          GITHUB_TOKEN: ${{ github.token }}
+          NEMOCLAW_E2E_TIMEOUT_SECONDS: "2700"
+        run: bash test/e2e/test-sandbox-operations.sh
+
+      - name: Upload sandbox gateway logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-operations-docker-logs
+          path: docker-logs/
+          if-no-files-found: ignore
+
+      - name: Upload test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-operations-test-log
+          path: test-sandbox-operations-*.log
+          if-no-files-found: ignore

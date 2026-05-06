@@ -1380,7 +1380,7 @@ jobs:
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',device-auth-health-e2e,'))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6

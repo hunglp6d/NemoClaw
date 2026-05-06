@@ -344,6 +344,14 @@ jobs:
           path: /tmp/nemoclaw-e2e-kimi-inference-compat-onboard.log
           if-no-files-found: ignore
 
+      - name: Upload build/setup log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-kimi-inference-compat
+          path: /tmp/nemoclaw-e2e-kimi-inference-compat-build.log
+          if-no-files-found: ignore
+
       - name: Upload agent log on failure
         if: failure()
         uses: actions/upload-artifact@v4

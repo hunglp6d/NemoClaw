@@ -318,6 +318,47 @@ cli_command_available_from_source() {
   [ -f "$REPO/dist/nemoclaw.js" ] && command -v node >/dev/null 2>&1 && command -v openshell >/dev/null 2>&1
 }
 
+prepare_source_cli() {
+  local rc=0
+  : >"$BUILD_LOG"
+  load_shell_path
+
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is not available on PATH" >>"$BUILD_LOG"
+    return 127
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node is not available on PATH" >>"$BUILD_LOG"
+    return 127
+  fi
+
+  if [ ! -f "$REPO/dist/nemoclaw.js" ]; then
+    info "Installing npm dependencies and building source CLI"
+    (
+      cd "$REPO" &&
+        npm ci --ignore-scripts &&
+        npm run build:cli
+    ) >>"$BUILD_LOG" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      return "$rc"
+    fi
+  fi
+
+  if ! command -v openshell >/dev/null 2>&1; then
+    info "Installing OpenShell CLI"
+    bash "$REPO/scripts/install-openshell.sh" >>"$BUILD_LOG" 2>&1 || rc=$?
+    load_shell_path
+    if [ "$rc" -ne 0 ]; then
+      return "$rc"
+    fi
+  fi
+
+  if ! command -v openshell >/dev/null 2>&1; then
+    echo "openshell is not available on PATH after installation" >>"$BUILD_LOG"
+    return 127
+  fi
+}
+
 destroy_sandbox_best_effort() {
   if [ "${NEMOCLAW_E2E_KEEP_SANDBOX:-}" = "1" ]; then
     return 0
@@ -342,6 +383,7 @@ cleanup() {
 
 run_kimi_onboard() {
   local onboard_exit=0
+  local prep_exit=0
   export NEMOCLAW_SANDBOX_NAME="$SANDBOX_NAME"
   export NEMOCLAW_RECREATE_SANDBOX=1
   export NEMOCLAW_NON_INTERACTIVE=1
@@ -357,17 +399,18 @@ run_kimi_onboard() {
   unset NVIDIA_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY
   unset TELEGRAM_BOT_TOKEN DISCORD_BOT_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN
 
-  destroy_sandbox_best_effort
-  if cli_command_available_from_source; then
-    info "Using source-built CLI at $REPO/bin/nemoclaw.js"
-    run_with_timeout 1500 node "$REPO/bin/nemoclaw.js" onboard --fresh --non-interactive --yes-i-accept-third-party-software \
-      >"$ONBOARD_LOG" 2>&1 || onboard_exit=$?
-  else
-    info "Source CLI is not built yet; running install.sh from this checkout."
-    run_with_timeout 1500 bash "$REPO/install.sh" --non-interactive --yes-i-accept-third-party-software --fresh \
-      >"$ONBOARD_LOG" 2>&1 || onboard_exit=$?
-    load_shell_path
+  prepare_source_cli || prep_exit=$?
+  if [ "$prep_exit" -ne 0 ]; then
+    fail "K1: source CLI/OpenShell preparation failed (exit $prep_exit)"
+    info "Last 100 lines of build/setup log:"
+    tail -100 "$BUILD_LOG" 2>/dev/null || true
+    summary
   fi
+
+  destroy_sandbox_best_effort
+  info "Using source-built CLI at $REPO/bin/nemoclaw.js"
+  run_with_timeout 1500 node "$REPO/bin/nemoclaw.js" onboard --fresh --non-interactive --yes-i-accept-third-party-software \
+    >"$ONBOARD_LOG" 2>&1 || onboard_exit=$?
 
   if [ "$onboard_exit" -eq 0 ]; then
     pass "K1: onboard completed for Kimi compatible endpoint sandbox"
@@ -609,6 +652,7 @@ SESSION_ID="${NEMOCLAW_KIMI_SESSION_ID:-kimi-e2e-$(date +%s)}"
 KIMI_MOCK_LOG="$(mktemp)"
 ONBOARD_LOG="/tmp/nemoclaw-e2e-kimi-inference-compat-onboard.log"
 AGENT_LOG="/tmp/nemoclaw-e2e-kimi-inference-compat-agent.log"
+BUILD_LOG="/tmp/nemoclaw-e2e-kimi-inference-compat-build.log"
 KIMI_MOCK_PID=""
 
 trap cleanup EXIT

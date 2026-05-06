@@ -802,7 +802,10 @@ function loadBlueprintProfile(
     const parsed = YAML.parse(raw);
     const profile = parsed?.components?.inference?.profiles?.[profileName];
     if (!profile) return null;
-    const router = parsed?.components?.router || {};
+    const router = {
+      ...(parsed?.components?.router || {}),
+      credential_env: profile.credential_env,
+    };
     return { ...profile, router } as BlueprintInferenceProfile;
   } catch {
     return null;
@@ -857,6 +860,7 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
       "proxy",
       "--litellm-config", litellmConfigPath,
       "--router-config", poolConfigPath,
+      "--host", "0.0.0.0",
       "--port", String(port),
     ],
     {

@@ -142,7 +142,7 @@ openclaw agent --agent main --local -m "hello" --session-id test
 
 NemoClaw includes an optional model router that automatically picks the most efficient model for each query. Instead of sending every request to a single large model, the router uses a lightweight encoder to predict which model in a pool can handle each query correctly, then routes to the cheapest one that meets an accuracy threshold.
 
-The router uses the [NVIDIA LLM Router v3](https://github.com/NVIDIA-AI-Blueprints/llm-router/tree/v3) prefill routing engine and runs on the host as a LiteLLM proxy. The sandbox reaches it through the OpenShell gateway.
+The router uses the [NVIDIA LLM Router v3](https://github.com/NVIDIA-AI-Blueprints/llm-router/tree/v3) prefill routing engine and runs on the host as a LiteLLM proxy. The sandbox reaches it through the OpenShell gateway and continues to call `https://inference.local/v1`; do not probe `localhost:4000` or `host.openshell.internal` directly from inside the sandbox.
 
 #### Enable during onboard
 

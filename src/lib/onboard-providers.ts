@@ -339,6 +339,10 @@ function getSandboxInferenceConfig(model, provider = null, preferredInferenceApi
         supportsStore: false,
       };
       break;
+    case "nvidia-router":
+      providerKey = "inference";
+      primaryModelRef = `inference/${model}`;
+      break;
     case "nvidia-prod":
     case "nvidia-nim":
     default:

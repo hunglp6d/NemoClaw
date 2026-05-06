@@ -107,6 +107,13 @@ type OnboardTestInternals = {
     sandboxGpuDevice: string | null;
     errors: string[];
   };
+  getResumeSandboxGpuOverrides: (
+    entry:
+      | { sandboxGpuMode?: "auto" | "1" | "0" | string | null; sandboxGpuDevice?: string | null }
+      | null
+      | undefined,
+    sessionGpuPassthrough?: boolean,
+  ) => { flag: "enable" | "disable" | null; device: string | null };
   shouldAllowOpenshellAboveBlueprintMax: (
     versionOutput?: string | null,
     platform?: NodeJS.Platform,
@@ -189,6 +196,7 @@ function isOnboardTestInternals(
     typeof value.findReadableNvidiaCdiSpecFiles === "function" &&
     typeof value.parseDockerCdiSpecDirs === "function" &&
     typeof value.resolveSandboxGpuConfig === "function" &&
+    typeof value.getResumeSandboxGpuOverrides === "function" &&
     typeof value.shouldAllowOpenshellAboveBlueprintMax === "function" &&
     typeof value.getDefaultSandboxNameForAgent === "function" &&
     typeof value.getSandboxPromptDefault === "function" &&
@@ -237,6 +245,7 @@ const {
   findReadableNvidiaCdiSpecFiles,
   parseDockerCdiSpecDirs,
   resolveSandboxGpuConfig,
+  getResumeSandboxGpuOverrides,
   shouldAllowOpenshellAboveBlueprintMax,
   versionGte,
   getRequestedModelHint,
@@ -290,6 +299,29 @@ describe("onboard helpers", () => {
     });
     expect(forced.mode).toBe("1");
     expect(forced.errors.join("\n")).toContain("no NVIDIA GPU");
+  });
+
+  it("resumes sandbox GPU auto mode without turning CPU fallback into explicit opt-out", () => {
+    const resumedAuto = getResumeSandboxGpuOverrides(
+      { sandboxGpuMode: "auto", sandboxGpuDevice: null },
+      false,
+    );
+    expect(resumedAuto).toEqual({ flag: null, device: null });
+    expect(
+      resolveSandboxGpuConfig({ type: "nvidia" }, { ...resumedAuto, env: {} }).sandboxGpuEnabled,
+    ).toBe(true);
+
+    const resumedDisabled = getResumeSandboxGpuOverrides(
+      { sandboxGpuMode: "0", sandboxGpuDevice: null },
+      false,
+    );
+    expect(
+      resolveSandboxGpuConfig({ type: "nvidia" }, { ...resumedDisabled, env: {} })
+        .sandboxGpuEnabled,
+    ).toBe(false);
+
+    const legacyGpuSession = getResumeSandboxGpuOverrides(null, true);
+    expect(legacyGpuSession.flag).toBe("enable");
   });
 
   it("builds OpenShell sandbox GPU create args", () => {
@@ -3369,7 +3401,7 @@ const { setupInference } = require(${onboardPath});
       // #2753: a stale `session.sandboxName` from an interrupted onboard
       // must not override a fresh `--name` / NEMOCLAW_SANDBOX_NAME, so the
       // session value participates only when its sandbox step completed.
-      /const recordedSandboxName =\s*session\?\.steps\?\.sandbox\?\.status === "complete" \? session\?\.sandboxName \|\| null : null;\s*let sandboxName = recordedSandboxName \|\| requestedSandboxName \|\| null;\s*if \(sandboxName && RESERVED_SANDBOX_NAMES\.has\(sandboxName\)\) \{[\s\S]*?process\.exit\(1\);\s*\}/,
+      /const recordedSandboxName =\s*session\?\.steps\?\.sandbox\?\.status === "complete" \? session\?\.sandboxName \|\| null : null;[\s\S]*?let sandboxName = recordedSandboxName \|\| requestedSandboxName \|\| null;\s*if \(sandboxName && RESERVED_SANDBOX_NAMES\.has\(sandboxName\)\) \{[\s\S]*?process\.exit\(1\);\s*\}/,
     );
   });
   it("delegates sandbox-create progress streaming to the extracted helper module", () => {

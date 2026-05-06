@@ -819,6 +819,11 @@ type SandboxGpuConfig = {
   errors: string[];
 };
 
+type ResumeSandboxGpuOverrides = {
+  flag: SandboxGpuFlag;
+  device: string | null;
+};
+
 function isNvidiaGpuDetected(gpu: ReturnType<typeof nim.detectGpu>): boolean {
   return Boolean(gpu && gpu.type === "nvidia");
 }
@@ -897,6 +902,26 @@ function resolveSandboxGpuFlagFromOptions(
   if (requestedGpuPassthrough) return "enable";
   if (optedOutGpuPassthrough) return "disable";
   return null;
+}
+
+function getResumeSandboxGpuOverrides(
+  entry: Pick<SandboxEntry, "sandboxGpuMode" | "sandboxGpuDevice"> | null | undefined,
+  sessionGpuPassthrough: boolean | undefined,
+): ResumeSandboxGpuOverrides {
+  const recordedMode = normalizeSandboxGpuMode(entry?.sandboxGpuMode);
+  if (recordedMode === "1") {
+    return { flag: "enable", device: entry?.sandboxGpuDevice || null };
+  }
+  if (recordedMode === "0") {
+    return { flag: "disable", device: null };
+  }
+  if (recordedMode === "auto") {
+    return { flag: null, device: null };
+  }
+  if (sessionGpuPassthrough === true) {
+    return { flag: "enable", device: entry?.sandboxGpuDevice || null };
+  }
+  return { flag: null, device: null };
 }
 
 function buildSandboxGpuCreateArgs(config: SandboxGpuConfig): string[] {
@@ -9801,6 +9826,10 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       });
     }
 
+    const recordedSandboxName =
+      session?.steps?.sandbox?.status === "complete" ? session?.sandboxName || null : null;
+    const resumeSandboxNameForGpu = recordedSandboxName || requestedSandboxName || null;
+
     console.log("");
     console.log(`  ${cliDisplayName()} Onboarding`);
     if (isNonInteractive()) note("  (non-interactive mode)");
@@ -9815,12 +9844,14 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       opts.sandboxGpuDevice == null &&
       process.env.NEMOCLAW_SANDBOX_GPU === undefined &&
       process.env.NEMOCLAW_SANDBOX_GPU_DEVICE === undefined;
-    const resumedSandboxGpuFlag: SandboxGpuFlag = resumeHasResolvedGpuIntent
-      ? session?.gpuPassthrough === true
-        ? "enable"
-        : "disable"
-      : null;
-    const effectiveSandboxGpuFlag = explicitSandboxGpuFlag ?? resumedSandboxGpuFlag;
+    const resumedSandboxGpuOverrides = resumeHasResolvedGpuIntent
+      ? getResumeSandboxGpuOverrides(
+          resumeSandboxNameForGpu ? registry.getSandbox(resumeSandboxNameForGpu) : null,
+          session?.gpuPassthrough,
+        )
+      : { flag: null, device: null };
+    const effectiveSandboxGpuFlag = explicitSandboxGpuFlag ?? resumedSandboxGpuOverrides.flag;
+    const effectiveSandboxGpuDevice = opts.sandboxGpuDevice ?? resumedSandboxGpuOverrides.device;
     let gpu;
     if (resumePreflight) {
       skippedStepMessage("preflight", "cached");
@@ -9828,7 +9859,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       validateSandboxGpuPreflight(
         resolveSandboxGpuConfig(gpu, {
           flag: effectiveSandboxGpuFlag,
-          device: opts.sandboxGpuDevice ?? null,
+          device: effectiveSandboxGpuDevice,
         }),
       );
     } else {
@@ -9838,7 +9869,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     }
     const sandboxGpuConfig = resolveSandboxGpuConfig(gpu, {
       flag: effectiveSandboxGpuFlag,
-      device: opts.sandboxGpuDevice ?? null,
+      device: effectiveSandboxGpuDevice,
     });
 
     const requestedGpuPassthrough = opts.gpu === true;
@@ -9971,8 +10002,6 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     // never completed; users supplying `--name` / NEMOCLAW_SANDBOX_NAME on
     // the resume run must win, otherwise the stale name silently overrides
     // their explicit recovery input.
-    const recordedSandboxName =
-      session?.steps?.sandbox?.status === "complete" ? session?.sandboxName || null : null;
     let sandboxName = recordedSandboxName || requestedSandboxName || null;
     if (sandboxName && RESERVED_SANDBOX_NAMES.has(sandboxName)) {
       console.error(
@@ -10413,6 +10442,7 @@ module.exports = {
   isLinuxDockerDriverGatewayEnabled,
   findReadableNvidiaCdiSpecFiles,
   parseDockerCdiSpecDirs,
+  getResumeSandboxGpuOverrides,
   resolveSandboxGpuConfig,
   shouldAllowOpenshellAboveBlueprintMax,
   pullAndResolveBaseImageDigest,

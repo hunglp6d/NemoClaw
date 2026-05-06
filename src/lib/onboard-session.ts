@@ -75,6 +75,7 @@ export interface Session {
   preferredInferenceApi: string | null;
   nimContainer: string | null;
   routerPid: number | null;
+  routerCredentialHash: string | null;
   webSearchConfig: WebSearchConfig | null;
   policyPresets: string[] | null;
   messagingChannels: string[] | null;
@@ -124,6 +125,7 @@ export interface SessionUpdates {
   preferredInferenceApi?: string;
   nimContainer?: string;
   routerPid?: number;
+  routerCredentialHash?: string;
   webSearchConfig?: WebSearchConfig | null;
   policyPresets?: string[];
   messagingChannels?: string[];
@@ -304,6 +306,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     preferredInferenceApi: overrides.preferredInferenceApi ?? null,
     nimContainer: overrides.nimContainer ?? null,
     routerPid: readPositiveInteger(overrides.routerPid),
+    routerCredentialHash: overrides.routerCredentialHash ?? null,
     webSearchConfig:
       overrides.webSearchConfig?.fetchEnabled === true ? { fetchEnabled: true } : null,
     policyPresets: readStringArray(overrides.policyPresets),
@@ -341,6 +344,7 @@ export function normalizeSession(data: Session | SessionJsonValue | undefined): 
     preferredInferenceApi: readString(data.preferredInferenceApi),
     nimContainer: readString(data.nimContainer),
     routerPid: readPositiveInteger(data.routerPid),
+    routerCredentialHash: readString(data.routerCredentialHash),
     webSearchConfig: parseWebSearchConfig(data.webSearchConfig),
     policyPresets: readStringArray(data.policyPresets),
     messagingChannels: readStringArray(data.messagingChannels),
@@ -702,6 +706,9 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
   if (typeof updates.nimContainer === "string") safe.nimContainer = updates.nimContainer;
   if (typeof updates.routerPid === "number" && Number.isInteger(updates.routerPid) && updates.routerPid > 0) {
     safe.routerPid = updates.routerPid;
+  }
+  if (typeof updates.routerCredentialHash === "string") {
+    safe.routerCredentialHash = updates.routerCredentialHash;
   }
   if (isObject(updates.webSearchConfig) && updates.webSearchConfig.fetchEnabled === true) {
     safe.webSearchConfig = { fetchEnabled: true };

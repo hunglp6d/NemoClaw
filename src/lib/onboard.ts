@@ -838,6 +838,37 @@ async function isRouterHealthy(port: number, timeoutMs = ROUTER_HEALTH_TIMEOUT_M
   });
 }
 
+function isProcessRunning(pid: number | null | undefined): boolean {
+  if (!Number.isInteger(pid) || Number(pid) <= 0) return false;
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function stopModelRouterProcess(pid: number, port: number): Promise<void> {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (!isProcessRunning(pid) && !(await isRouterHealthy(port, 1000))) return;
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // already stopped
+  }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (!isProcessRunning(pid) && !(await isRouterHealthy(port, 1000))) return;
+  }
+}
+
 /**
  * Start the model-router proxy and wait for it to become healthy.
  * Follows the same pattern as Ollama startup (spawn detached, poll health).
@@ -899,18 +930,27 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
       env: buildSubprocessEnv(credEnvVars),
     },
   );
+  let childExited = false;
+  let childExitDetail = "";
+  child.once("error", (err: Error) => {
+    childExited = true;
+    childExitDetail = `child failed to start: ${err.message}`;
+  });
+  child.once("exit", (code: number | null, signal: string | null) => {
+    childExited = true;
+    if (!childExitDetail) {
+      childExitDetail = `child exited with code ${code ?? "null"}${signal ? ` signal ${signal}` : ""}`;
+    }
+  });
   child.unref();
 
   const pid = child.pid;
   if (!pid) {
-    throw new Error("Failed to start model-router proxy: no PID returned");
+    throw new Error(
+      "Failed to start model-router proxy: no PID returned" +
+        (childExitDetail ? ` (${childExitDetail})` : ""),
+    );
   }
-  let childExited = false;
-  let childExitDetail = "";
-  child.once("exit", (code: number | null, signal: string | null) => {
-    childExited = true;
-    childExitDetail = `child exited with code ${code ?? "null"}${signal ? ` signal ${signal}` : ""}`;
-  });
 
   for (let attempt = 0; attempt < ROUTER_HEALTH_RETRIES; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, ROUTER_HEALTH_INTERVAL_MS));
@@ -966,10 +1006,28 @@ async function reconcileModelRouter(): Promise<void> {
     throw new Error(`${routerCredentialEnv} is required to start Model Router.`);
   }
   process.env[routerCredentialEnv] = routerCredential;
+  const routerCredentialHash = hashCredential(routerCredential);
+  const session = onboardSession.loadSession();
+  const recordedPid = session?.routerPid ?? null;
+  const recordedCredentialHash = session?.routerCredentialHash ?? null;
 
   if (await isRouterHealthy(routerPort)) {
-    console.log(`  ✓ Model router is already healthy on port ${routerPort}`);
-    return;
+    if (
+      routerCredentialHash &&
+      recordedCredentialHash === routerCredentialHash &&
+      isProcessRunning(recordedPid)
+    ) {
+      console.log(`  ✓ Model router is already healthy on port ${routerPort}`);
+      return;
+    }
+    if (isProcessRunning(recordedPid)) {
+      console.log("  Restarting model router with updated credentials...");
+      await stopModelRouterProcess(requireValue(recordedPid, "Expected recorded router PID"), routerPort);
+    } else {
+      throw new Error(
+        `Port ${routerPort} already has a healthy router endpoint, but its credential state is unknown. Stop the existing model-router process and rerun onboarding.`,
+      );
+    }
   }
 
   console.log("  Starting model router...");
@@ -977,6 +1035,7 @@ async function reconcileModelRouter(): Promise<void> {
   console.log(`  ✓ Model router started (PID ${routerPid}) on port ${routerPort}`);
   onboardSession.updateSession((current: Session) => {
     current.routerPid = routerPid;
+    current.routerCredentialHash = routerCredentialHash;
     return current;
   });
 }
@@ -6711,7 +6770,7 @@ async function setupNim(
           if (isNonInteractive()) process.exit(1);
           continue selectionLoop;
         }
-        const routerCredentialEnv = bp.credential_env || "OPENAI_API_KEY";
+        const routerCredentialEnv = bp.router?.credential_env || bp.credential_env || "OPENAI_API_KEY";
         credentialEnv = routerCredentialEnv;
         const routedCredential =
           hydrateCredentialEnv(routerCredentialEnv) ||

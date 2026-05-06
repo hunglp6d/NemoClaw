@@ -14,9 +14,9 @@ const fs = require("fs");
 const path = require("path");
 const { fork } = require("child_process");
 const { run, runCapture, validateName, shellQuote } = require("./runner");
-const { dockerExecFileSync } = require("./docker/exec");
-const { dockerCapture } = require("./docker/run");
-const registry = require("./registry") as {
+const { dockerExecFileSync } = require("./adapters/docker/exec");
+const { dockerCapture } = require("./adapters/docker/run");
+const registry = require("./state/registry") as {
   getSandbox?: (name: string) => { openshellDriver?: string | null } | null;
 };
 const {

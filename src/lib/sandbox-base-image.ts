@@ -11,7 +11,7 @@ import {
   dockerImageInspect,
   dockerImageInspectFormat,
   dockerPull,
-} from "./docker";
+} from "./adapters/docker";
 
 export const OPENCLAW_SANDBOX_BASE_IMAGE = "ghcr.io/nvidia/nemoclaw/sandbox-base";
 export const HERMES_SANDBOX_BASE_IMAGE = "ghcr.io/nvidia/nemoclaw/hermes-sandbox-base";

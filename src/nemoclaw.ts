@@ -60,13 +60,13 @@ const {
   isSandboxConnectFlag,
   parseSandboxConnectArgs,
   printSandboxConnectHelp,
-} = require("./lib/sandbox-connect-action");
+} = require("./lib/actions/sandbox/connect");
 const {
   executeSandboxCommand,
-} = require("./lib/sandbox-process-recovery-action");
+} = require("./lib/actions/sandbox/process-recovery");
 const {
   getSandboxDeleteOutcome,
-} = require("./lib/sandbox-destroy-action");
+} = require("./lib/actions/sandbox/destroy");
 const { runRegisteredOclifCommand } = require("./lib/cli/oclif-runner");
 const { isErrnoException }: typeof import("./lib/errno") = require("./lib/errno");
 const agentRuntime = require("../bin/lib/agent-runtime");

@@ -1,0 +1,47 @@
+name: custom-e2e
+
+on:
+  push:
+    branches: [fix/nightly-e2e-token-rotation-timeout-2ee1264-custom-e2e]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  token-rotation-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run token rotation E2E test
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_POLICY_TIER: "open"
+          GITHUB_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN_A: "test-fake-token-A-rotation-e2e"
+          TELEGRAM_BOT_TOKEN_B: "test-fake-token-B-rotation-e2e"
+          DISCORD_BOT_TOKEN_A: "test-fake-discord-A-rotation-e2e"
+          DISCORD_BOT_TOKEN_B: "test-fake-discord-B-rotation-e2e"
+          SLACK_BOT_TOKEN_A: "xoxb-fake-A-rotation-e2e"
+          SLACK_BOT_TOKEN_B: "xoxb-fake-B-rotation-e2e"
+          SLACK_APP_TOKEN_A: "xapp-fake-A-rotation-e2e"
+          SLACK_APP_TOKEN_B: "xapp-fake-B-rotation-e2e"
+        run: bash test/e2e/test-token-rotation.sh
+
+      - name: Upload install log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log-token-rotation
+          path: /tmp/nemoclaw-e2e-install.log
+          if-no-files-found: ignore

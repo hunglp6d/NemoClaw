@@ -1,0 +1,42 @@
+# Auto-generated validation workflow for fix/nightly-e2e-ssh-host-prefix-missing-6e6f24d
+# Re-runs only the device-auth-health-e2e job to validate the SSH host prefix fix.
+name: custom-e2e
+
+on:
+  push:
+    branches: ['fix/nightly-e2e-ssh-host-prefix-missing-6e6f24d-custom-e2e']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  device-auth-health-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run device auth health E2E
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_SANDBOX_NAME: "e2e-health-auth"
+          NEMOCLAW_RECREATE_SANDBOX: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test/e2e/test-device-auth-health.sh
+
+      - name: Upload install log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-auth-health-install-log
+          path: /tmp/nemoclaw-e2e-health-install.log
+          if-no-files-found: ignore

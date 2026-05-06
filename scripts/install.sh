@@ -1320,6 +1320,26 @@ is_source_checkout() {
   return 1
 }
 
+init_nemoclaw_submodules() {
+  local root="$1"
+  [[ -f "$root/.gitmodules" ]] || return 0
+  git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  git -C "$root" submodule update --init --depth 1 2>/dev/null
+}
+
+install_model_router_if_present() {
+  local root="$1"
+  local router_dir="$root/nemoclaw-blueprint/router/llm-router"
+
+  command_exists pip3 || return 0
+  [[ -d "$router_dir" ]] || return 0
+  if [[ ! -f "$router_dir/pyproject.toml" && ! -f "$router_dir/setup.py" ]]; then
+    warn "Skipping model router install — llm-router submodule is not initialized."
+    return 0
+  fi
+  spin "Installing model router" pip3 install --quiet --user "${router_dir}[prefill,proxy]"
+}
+
 install_nemoclaw() {
   command_exists git || error "git was not found on PATH."
   local repo_root package_json
@@ -1335,12 +1355,12 @@ install_nemoclaw() {
       spin "Preparing OpenClaw package" bash -c "$(declare -f info warn resolve_openclaw_version pre_extract_openclaw); pre_extract_openclaw \"\$1\"" _ "$NEMOCLAW_SOURCE_ROOT" \
         || warn "Pre-extraction failed — npm install may fail if openclaw tarball is broken"
     fi
+    spin "Initializing ${_CLI_DISPLAY} submodules" init_nemoclaw_submodules "$NEMOCLAW_SOURCE_ROOT" \
+      || warn "Submodule initialization failed — model router support may be unavailable"
     spin "Installing ${_CLI_DISPLAY} dependencies" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm install --ignore-scripts"
     spin "Building ${_CLI_DISPLAY} CLI modules" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm run --if-present build:cli"
     spin "Building ${_CLI_DISPLAY} plugin" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\"/nemoclaw && npm install --ignore-scripts && npm run build"
-    if command_exists pip3 && [ -d "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router" ]; then
-      spin "Installing model router" pip3 install --quiet --user "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router[prefill,proxy]"
-    fi
+    install_model_router_if_present "$NEMOCLAW_SOURCE_ROOT"
     spin "Linking ${_CLI_DISPLAY} CLI" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm link"
   else
     if [[ -f "$package_json" ]]; then
@@ -1359,8 +1379,8 @@ install_nemoclaw() {
     mkdir -p "$(dirname "$nemoclaw_src")"
     NEMOCLAW_SOURCE_ROOT="$nemoclaw_src"
     spin "Cloning ${_CLI_DISPLAY} source" clone_nemoclaw_ref "$release_ref" "$nemoclaw_src"
-    # Initialize submodules (e.g., llm-router for model routing support).
-    git -C "$nemoclaw_src" submodule update --init --depth 1 2>/dev/null || true
+    spin "Initializing ${_CLI_DISPLAY} submodules" init_nemoclaw_submodules "$nemoclaw_src" \
+      || warn "Submodule initialization failed — model router support may be unavailable"
     # Fetch version tags into the shallow clone so `git describe --tags
     # --match "v*"` works at runtime (the shallow clone only has the
     # single ref we asked for).
@@ -1376,9 +1396,7 @@ install_nemoclaw() {
     spin "Installing ${_CLI_DISPLAY} dependencies" bash -c "cd \"$nemoclaw_src\" && npm install --ignore-scripts"
     spin "Building ${_CLI_DISPLAY} CLI modules" bash -c "cd \"$nemoclaw_src\" && npm run --if-present build:cli"
     spin "Building ${_CLI_DISPLAY} plugin" bash -c "cd \"$nemoclaw_src\"/nemoclaw && npm install --ignore-scripts && npm run build"
-    if command_exists pip3 && [ -d "$nemoclaw_src/nemoclaw-blueprint/router/llm-router" ]; then
-      spin "Installing model router" pip3 install --quiet --user "$nemoclaw_src/nemoclaw-blueprint/router/llm-router[prefill,proxy]"
-    fi
+    install_model_router_if_present "$nemoclaw_src"
     spin "Linking ${_CLI_DISPLAY} CLI" bash -c "cd \"$nemoclaw_src\" && npm link"
 
     # Install/upgrade the OpenShell CLI on the GitHub-clone path (curl|bash).

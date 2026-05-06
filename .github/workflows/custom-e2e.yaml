@@ -1,0 +1,54 @@
+name: custom-e2e
+
+on:
+  push:
+    branches: ['fix/nightly-e2e-json-session-persist-5976c8b-attempt-2-custom-e2e']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-e2e-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kimi-inference-compat-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run Kimi inference compatibility E2E test
+        env:
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_SANDBOX_NAME: "e2e-kimi-compat"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test/e2e/test-kimi-inference-compat.sh
+
+      - name: Upload onboard log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log-kimi-inference-compat
+          path: /tmp/nemoclaw-e2e-kimi-inference-compat-onboard.log
+          if-no-files-found: ignore
+
+      - name: Upload build/setup log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-kimi-inference-compat
+          path: /tmp/nemoclaw-e2e-kimi-inference-compat-build.log
+          if-no-files-found: ignore
+
+      - name: Upload agent log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-log-kimi-inference-compat
+          path: /tmp/nemoclaw-e2e-kimi-inference-compat-agent.log
+          if-no-files-found: ignore

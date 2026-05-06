@@ -135,28 +135,45 @@ pass "Preflight checks passed"
 section "Phase 1: Install & Onboard"
 
 # Clean up any previous sandbox with the same name
-nemoclaw "$SANDBOX_NAME" destroy --yes >/dev/null 2>&1 || true
 rm -f "$HOME/.nemoclaw/onboard.lock" 2>/dev/null || true
 
-info "Installing NemoClaw (if not already installed)..."
 INSTALL_LOG="/tmp/nemoclaw-e2e-health-install.log"
-if ! command -v nemoclaw >/dev/null 2>&1; then
-  GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
-    bash scripts/install.sh 2>&1 | tee "$INSTALL_LOG"
-fi
 
-info "Onboarding sandbox '${SANDBOX_NAME}' with device auth enabled..."
-ONBOARD_EXIT=0
+info "Installing NemoClaw (install.sh runs onboard in non-interactive mode)..."
+INSTALL_EXIT=0
 NEMOCLAW_SANDBOX_NAME="$SANDBOX_NAME" \
   NEMOCLAW_NON_INTERACTIVE=1 \
   NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 \
-  nemoclaw onboard --non-interactive --yes-i-accept-third-party-software \
-  2>&1 | tee -a "$INSTALL_LOG" || ONBOARD_EXIT=$?
+  NEMOCLAW_RECREATE_SANDBOX=1 \
+  GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+  bash scripts/install.sh --non-interactive 2>&1 | tee "$INSTALL_LOG" || INSTALL_EXIT=$?
 
-if [[ $ONBOARD_EXIT -ne 0 ]]; then
-  fail "Onboard failed with exit code $ONBOARD_EXIT"
+# Source shell profile to pick up PATH changes from install.sh
+# shellcheck disable=SC1091
+source "$HOME/.bashrc" 2>/dev/null || true
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+export PATH="/usr/local/bin:$PATH"
+hash -r
+
+if [[ $INSTALL_EXIT -ne 0 ]]; then
+  fail "Install failed with exit code $INSTALL_EXIT"
   info "See $INSTALL_LOG for details"
   exit 1
+fi
+
+if ! command -v nemoclaw >/dev/null 2>&1; then
+  fail "nemoclaw not found on PATH after install"
+  info "PATH=$PATH"
+  exit 1
+fi
+
+# Detect actual dashboard port (may differ from default if port was taken)
+ACTUAL_PORT=$(openshell forward list 2>/dev/null | grep "$SANDBOX_NAME" | awk '{print $3}' | head -1)
+if [[ -n "$ACTUAL_PORT" ]]; then
+  DASHBOARD_PORT="$ACTUAL_PORT"
+  info "Detected actual dashboard port: ${DASHBOARD_PORT}"
 fi
 
 # Verify sandbox exists

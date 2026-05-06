@@ -802,10 +802,10 @@ function loadBlueprintProfile(
     const parsed = YAML.parse(raw);
     const profile = parsed?.components?.inference?.profiles?.[profileName];
     if (!profile) return null;
-    const router = {
-      ...(parsed?.components?.router || {}),
-      credential_env: profile.credential_env,
-    };
+    const router = { ...(parsed?.components?.router || {}) };
+    if (typeof profile.credential_env === "string" && profile.credential_env.trim().length > 0) {
+      router.credential_env = profile.credential_env;
+    }
     return { ...profile, router } as BlueprintInferenceProfile;
   } catch {
     return null;
@@ -959,7 +959,13 @@ async function reconcileModelRouter(): Promise<void> {
   const bp = getRoutedProfile();
   const routerPort = bp.router.port || 4000;
   const routerCredentialEnv = bp.router.credential_env || bp.credential_env || "NVIDIA_API_KEY";
-  hydrateCredentialEnv(routerCredentialEnv);
+  const routerCredential =
+    hydrateCredentialEnv(routerCredentialEnv) ||
+    normalizeCredentialValue(process.env[routerCredentialEnv] || "");
+  if (!routerCredential) {
+    throw new Error(`${routerCredentialEnv} is required to start Model Router.`);
+  }
+  process.env[routerCredentialEnv] = routerCredential;
 
   if (await isRouterHealthy(routerPort)) {
     console.log(`  ✓ Model router is already healthy on port ${routerPort}`);

@@ -700,6 +700,9 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
   if (typeof updates.preferredInferenceApi === "string")
     safe.preferredInferenceApi = updates.preferredInferenceApi;
   if (typeof updates.nimContainer === "string") safe.nimContainer = updates.nimContainer;
+  if (typeof updates.routerPid === "number" && Number.isInteger(updates.routerPid) && updates.routerPid > 0) {
+    safe.routerPid = updates.routerPid;
+  }
   if (isObject(updates.webSearchConfig) && updates.webSearchConfig.fetchEnabled === true) {
     safe.webSearchConfig = { fetchEnabled: true };
   } else if (updates.webSearchConfig === null) {

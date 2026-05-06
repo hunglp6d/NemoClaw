@@ -106,7 +106,7 @@ sandbox_exec() {
     -o UserKnownHostsFile=/dev/null \
     -o ConnectTimeout=10 \
     -o LogLevel=ERROR \
-    "$SANDBOX_NAME" "$cmd" 2>/dev/null
+    "openshell-${SANDBOX_NAME}" "$cmd" 2>/dev/null
 }
 
 # ══════════════════════════════════════════════════════════════════════════════

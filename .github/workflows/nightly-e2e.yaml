@@ -81,7 +81,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',cloud-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -115,7 +115,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',cloud-onboard-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -151,7 +151,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',cloud-inference-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -183,7 +183,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',skill-agent-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -215,7 +215,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',docs-validation-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -250,7 +250,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',messaging-providers-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -288,7 +288,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',messaging-compatible-endpoint-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -324,7 +324,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',token-rotation-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -362,7 +362,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',sandbox-survival-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -395,7 +395,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',issue-2478-crash-loop-recovery-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -428,7 +428,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',hermes-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -463,7 +463,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',hermes-discord-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -503,7 +503,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',sandbox-operations-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -749,7 +749,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',inference-routing-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -780,7 +780,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',network-policy-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -813,7 +813,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',deployment-services-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -845,7 +845,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',diagnostics-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -879,7 +879,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',credential-migration-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -912,7 +912,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',snapshot-commands-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -944,7 +944,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',shields-config-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -976,7 +976,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',rebuild-openclaw-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1009,7 +1009,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',upgrade-stale-sandbox-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1042,7 +1042,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',rebuild-hermes-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1075,7 +1075,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',rebuild-hermes-stale-base-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1107,7 +1107,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',double-onboard-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -1144,7 +1144,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',onboard-repair-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1181,7 +1181,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',onboard-resume-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1218,7 +1218,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',runtime-overrides-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -1256,7 +1256,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',credential-sanitization-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1297,7 +1297,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',telegram-injection-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -1341,7 +1341,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',overlayfs-autofix-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -1379,7 +1379,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',device-auth-health-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -1415,7 +1415,7 @@ jobs:
       (github.event_name != 'workflow_dispatch' ||
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',launchable-smoke-e2e,'))
-    runs-on: ubuntu-latest
+    runs-on: linux-amd64-cpu4
     timeout-minutes: 30
     steps:
       - name: Checkout

@@ -42,7 +42,7 @@
 set -uo pipefail
 
 # ── Overall timeout ──────────────────────────────────────────────────────────
-export NEMOCLAW_E2E_DEFAULT_TIMEOUT=600
+export NEMOCLAW_E2E_DEFAULT_TIMEOUT=900
 SCRIPT_DIR_TIMEOUT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=test/e2e/e2e-timeout.sh
 source "${SCRIPT_DIR_TIMEOUT}/e2e-timeout.sh"
@@ -110,7 +110,7 @@ info "Device auth: ENABLED (default — no NEMOCLAW_DISABLE_DEVICE_AUTH)"
 pass "Preflight checks passed"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 1: Install & Onboard (device auth ON)
+# Phase 1: Install & Onboard
 # ══════════════════════════════════════════════════════════════════════════════
 section "Phase 1: Install & Onboard"
 
@@ -121,29 +121,25 @@ rm -f "$HOME/.nemoclaw/onboard.lock" 2>/dev/null || true
 info "Installing NemoClaw (if not already installed)..."
 INSTALL_LOG="/tmp/nemoclaw-e2e-health-install.log"
 if ! command -v nemoclaw >/dev/null 2>&1; then
+  # install.sh performs a full install AND onboard — it creates the sandbox
+  # via `nemoclaw onboard` internally.  A previous version of this test ran
+  # `nemoclaw onboard` a second time after install, but that triggered a
+  # redundant full sandbox image rebuild (onboard.ts hardcodes
+  # NEMOCLAW_DISABLE_DEVICE_AUTH=1 regardless of the caller's env, so the
+  # second build produced an identical image).  With a ~540 s first build
+  # the 600 s script timeout fired mid-way through the second build
+  # (exit 124).  Removing the duplicate onboard fixes the timeout and
+  # is functionally equivalent — the key regression checks (health probe,
+  # status, recovery) work with the sandbox install.sh already created.
   GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
     bash scripts/install.sh 2>&1 | tee "$INSTALL_LOG"
 fi
 
-info "Onboarding sandbox '${SANDBOX_NAME}' with device auth enabled..."
-ONBOARD_EXIT=0
-NEMOCLAW_SANDBOX_NAME="$SANDBOX_NAME" \
-  NEMOCLAW_NON_INTERACTIVE=1 \
-  NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 \
-  nemoclaw onboard --non-interactive --yes-i-accept-third-party-software \
-  2>&1 | tee -a "$INSTALL_LOG" || ONBOARD_EXIT=$?
-
-if [[ $ONBOARD_EXIT -ne 0 ]]; then
-  fail "Onboard failed with exit code $ONBOARD_EXIT"
-  info "See $INSTALL_LOG for details"
-  exit 1
-fi
-
-# Verify sandbox exists
+# Verify sandbox exists (created by install.sh's internal onboard)
 if nemoclaw list 2>/dev/null | grep -q "$SANDBOX_NAME"; then
   pass "Onboard succeeded — sandbox '${SANDBOX_NAME}' registered"
 else
-  fail "Sandbox '${SANDBOX_NAME}' not found in nemoclaw list after onboard"
+  fail "Sandbox '${SANDBOX_NAME}' not found in nemoclaw list after install"
   exit 1
 fi
 

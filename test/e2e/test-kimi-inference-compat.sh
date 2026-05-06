@@ -500,7 +500,7 @@ check_inference_route() {
 run_agent_prompt() {
   local prompt remote_cmd agent_exit=0
   prompt="Use the exec tool to run hostname, date, and uptime. Run each command and then say exactly: hostname, date, and uptime completed successfully."
-  remote_cmd="rm -f /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.trajectory.jsonl 2>/dev/null || true; nemoclaw-start openclaw agent --agent main --session-id $(quote_for_remote_sh "$SESSION_ID") -m $(quote_for_remote_sh "$prompt")"
+  remote_cmd="rm -f /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.trajectory.jsonl 2>/dev/null || true; nemoclaw-start openclaw agent --agent main --json --session-id $(quote_for_remote_sh "$SESSION_ID") -m $(quote_for_remote_sh "$prompt")"
   run_with_timeout 420 openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd" >"$AGENT_LOG" 2>&1 || agent_exit=$?
   if [ "$agent_exit" -eq 0 ] && grep -q "hostname, date, and uptime completed successfully." "$AGENT_LOG"; then
     pass "K4: OpenClaw agent completed after Kimi tool results"
@@ -509,6 +509,23 @@ run_agent_prompt() {
     info "Agent log tail:"
     tail -120 "$AGENT_LOG" 2>/dev/null || true
   fi
+}
+
+debug_session_paths() {
+  local diag_output
+  diag_output=$(openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc '
+echo "=== DEBUG: HOME=$HOME id=$(id) ==="
+echo "=== /sandbox/.openclaw/ tree ==="
+find /sandbox/.openclaw/ -maxdepth 4 -type f -name "*.jsonl*" 2>/dev/null || echo "(no jsonl files)"
+echo "=== agents/main/ listing ==="
+ls -laR /sandbox/.openclaw/agents/main/ 2>/dev/null || echo "(agents/main/ does not exist)"
+echo "=== ~/.openclaw/ tree ==="
+find ~/.openclaw/ -maxdepth 4 -type f -name "*.jsonl*" 2>/dev/null || echo "(no jsonl files in HOME)"
+echo "=== all .openclaw dirs ==="
+find / -maxdepth 3 -type d -name ".openclaw" 2>/dev/null || echo "(no .openclaw dirs)"
+' 2>&1) || true
+  info "Session path diagnostics:"
+  printf '%s\n' "$diag_output" | sed 's/^/    /'
 }
 
 check_trajectory_acceptance() {
@@ -700,6 +717,7 @@ section "Phase 3: Runtime assertions"
 check_openclaw_config
 check_inference_route
 run_agent_prompt
+debug_session_paths
 check_trajectory_acceptance
 check_mock_observed_agent_traffic
 

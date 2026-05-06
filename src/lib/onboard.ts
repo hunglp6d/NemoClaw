@@ -2905,6 +2905,67 @@ function destroyGateway() {
   dockerRemoveVolumesByPrefix(`openshell-cluster-${GATEWAY_NAME}`, { ignoreError: true });
 }
 
+type FinalGatewayStartFailureOptions = {
+  retries: number;
+  collectDiagnostics?: () => string | null | undefined;
+  cleanupGateway?: () => void;
+  exitProcess?: (code: number) => never;
+  printError?: (message?: string) => void;
+};
+
+function handleFinalGatewayStartFailure({
+  retries,
+  collectDiagnostics = () =>
+    runCaptureOpenshell(["doctor", "logs", "--name", GATEWAY_NAME], {
+      ignoreError: true,
+      timeout: 10_000,
+    }),
+  cleanupGateway = destroyGateway,
+  exitProcess = (code) => process.exit(code),
+  printError = (message = "") => console.error(message),
+}: FinalGatewayStartFailureOptions): never {
+  printError(`  Gateway failed to start after ${retries + 1} attempts.`);
+  printError("  Gateway state preserved until diagnostics are collected.");
+  printError("");
+
+  try {
+    const logs = redact(collectDiagnostics() || "");
+    if (logs) {
+      printError("  Gateway logs:");
+      for (const line of String(logs)
+        .split("\n")
+        .map((l) => l.replace(/\r/g, "").replace(ANSI_RE, ""))
+        .filter(Boolean)) {
+        printError(`    ${line}`);
+      }
+      printError("");
+    }
+  } catch {
+    // doctor logs unavailable — continue to best-effort cleanup and manual instructions
+  }
+
+  printError("  Cleaning up failed gateway state...");
+  try {
+    cleanupGateway();
+    printError("  Cleanup attempted.");
+  } catch (err) {
+    const message = compactText(err instanceof Error ? err.message : String(err));
+    printError(message ? `  Cleanup attempt failed: ${message}` : "  Cleanup attempt failed.");
+  }
+  printError("");
+  printError("  Diagnostic command attempted before cleanup:");
+  printError(`    openshell doctor logs --name ${GATEWAY_NAME}`);
+  printError("    openshell doctor check");
+  printError("");
+  printError("  If gateway cleanup did not complete, run:");
+  printError(`    openshell gateway destroy -g ${GATEWAY_NAME}`);
+  printError(
+    `    docker volume ls -q --filter "name=openshell-cluster-${GATEWAY_NAME}" | xargs -r docker volume rm`,
+  );
+  printError(`    nemoclaw onboard --resume`);
+  return exitProcess(1);
+}
+
 function getGatewayClusterContainerState(): string {
   const containerName = getGatewayClusterContainerName();
   const state = dockerContainerInspectFormat(
@@ -4225,32 +4286,7 @@ async function startGatewayWithOptions(
     );
   } catch {
     if (exitOnFailure) {
-      console.error(`  Gateway failed to start after ${retries + 1} attempts.`);
-      console.error("  Gateway state preserved for diagnostics.");
-      console.error("");
-      try {
-        const logs = redact(
-          runCaptureOpenshell(["doctor", "logs", "--name", GATEWAY_NAME], {
-            ignoreError: true,
-          }),
-        );
-        if (logs) {
-          console.error("  Gateway logs:");
-          for (const line of String(logs)
-            .split("\n")
-            .map((l) => l.replace(/\r/g, "").replace(ANSI_RE, ""))
-            .filter(Boolean)) {
-            console.error(`    ${line}`);
-          }
-          console.error("");
-        }
-      } catch {
-        // doctor logs unavailable — fall through to manual instructions
-      }
-      console.error("  Troubleshooting:");
-      console.error("    openshell doctor logs --name nemoclaw");
-      console.error("    openshell doctor check");
-      process.exit(1);
+      handleFinalGatewayStartFailure({ retries });
     }
     throw new Error("Gateway failed to start");
   }
@@ -6956,14 +6992,12 @@ async function setupNim(
         if (!checkOllamaPortsOrWarn()) continue selectionLoop;
         if (!ollamaRunning) {
           console.log("  Starting Ollama...");
-          // On WSL2, binding to 0.0.0.0 creates a dual-stack socket that Docker
-          // cannot reach via host-gateway. The default 127.0.0.1 binding works
-          // because WSL2 relays IPv4-only sockets to the Windows host.
+          // Keep raw Ollama loopback-only. Non-WSL containers reach it through
+          // the authenticated proxy on OLLAMA_PROXY_PORT.
           // Shell required: backgrounding (&), env var prefix, output redirection.
-          const ollamaEnv = isWsl() ? "" : `OLLAMA_HOST=0.0.0.0:${OLLAMA_PORT} `;
+          const ollamaEnv = isWsl() ? "" : `OLLAMA_HOST=127.0.0.1:${OLLAMA_PORT} `;
           runShell(`${ollamaEnv}ollama serve > /dev/null 2>&1 &`, { ignoreError: true });
           sleep(2);
-          if (!isWsl()) printOllamaExposureWarning();
         }
         if (isWsl()) {
           // WSL2 doesn't need the proxy — Docker can reach the host directly.
@@ -7082,7 +7116,7 @@ async function setupNim(
           // brew install doesn't auto-start a service; launch directly.
           // Shell required: backgrounding (&), env var prefix, output redirection.
           console.log("  Starting Ollama...");
-          runShell(`OLLAMA_HOST=0.0.0.0:${OLLAMA_PORT} ollama serve > /dev/null 2>&1 &`, {
+          runShell(`OLLAMA_HOST=127.0.0.1:${OLLAMA_PORT} ollama serve > /dev/null 2>&1 &`, {
             ignoreError: true,
           });
           sleep(2);
@@ -7104,21 +7138,27 @@ async function setupNim(
             ],
             { ignoreError: true },
           ).trim();
-          // Linux native + systemd: override OLLAMA_HOST=0.0.0.0 via a drop-in
+          // Linux native + systemd: force a loopback-only OLLAMA_HOST drop-in
           // and let systemd own the daemon (avoids racing the installer's
-          // daemon with our own `ollama serve`). WSL keeps the default
-          // 127.0.0.1 binding (wslrelay forwards it). No-systemd / daemon
-          // failed to start: manual launch with the right binding.
+          // daemon with our own `ollama serve`). This also repairs older
+          // NemoClaw-created overrides that exposed raw Ollama on all interfaces.
+          // WSL keeps Ollama's default binding. No-systemd / daemon failed to
+          // start: manual launch with the loopback binding.
           if (!isWsl() && hasOllamaSystemdUnit) {
-            console.log("  Configuring Ollama systemd override...");
-            const dropInBody = `[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:${OLLAMA_PORT}"\n`;
+            console.log("  Configuring Ollama systemd loopback override...");
+            const dropInBody = `[Service]\nEnvironment="OLLAMA_HOST=127.0.0.1:${OLLAMA_PORT}"\n`;
             const tmpDropIn = secureTempFile("nemoclaw-ollama-override", ".conf");
             fs.writeFileSync(tmpDropIn, dropInBody, { mode: 0o644 });
-            runShell(
+            const overrideResult = runShell(
               `sudo install -D -m 0644 ${shellQuote(tmpDropIn)} ${shellQuote("/etc/systemd/system/ollama.service.d/override.conf")} && sudo systemctl daemon-reload && sudo systemctl restart ollama`,
               { ignoreError: true },
             );
             cleanupTempDir(tmpDropIn, "nemoclaw-ollama-override");
+            if (overrideResult.error || overrideResult.status !== 0) {
+              console.error("  Failed to apply Ollama systemd loopback override.");
+              console.error("  Refusing to continue with a potentially non-loopback Ollama bind.");
+              process.exit(1);
+            }
             // Retry the probe for a few seconds before giving up — systemd's
             // daemon may still be binding the port; a single probe could falsely
             // conclude it's down and spawn a duplicate `ollama serve`.
@@ -7130,7 +7170,7 @@ async function setupNim(
           // Fall back to manual start if systemd path failed or isn't present.
           if (!findReachableOllamaHost()) {
             console.log("  Starting Ollama...");
-            const ollamaEnv = isWsl() ? "" : `OLLAMA_HOST=0.0.0.0:${OLLAMA_PORT} `;
+            const ollamaEnv = isWsl() ? "" : `OLLAMA_HOST=127.0.0.1:${OLLAMA_PORT} `;
             runShell(`${ollamaEnv}ollama serve > /dev/null 2>&1 &`, { ignoreError: true });
             sleep(2);
           }
@@ -7139,7 +7179,6 @@ async function setupNim(
           // WSL2 doesn't need the proxy — Docker reaches the host directly.
           console.log(`  ✓ Using Ollama on localhost:${OLLAMA_PORT}`);
         } else {
-          printOllamaExposureWarning();
           if (!startOllamaAuthProxy()) {
             process.exit(1);
           }
@@ -10248,6 +10287,7 @@ module.exports = {
   getGatewayHealthWaitConfig,
   getGatewayReuseState,
   isDockerDriverGatewayPortListener,
+  handleFinalGatewayStartFailure,
   getNavigationChoice,
   getSandboxInferenceConfig,
   getInstalledOpenshellVersion,

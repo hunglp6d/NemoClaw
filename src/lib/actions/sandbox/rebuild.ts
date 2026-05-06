@@ -3,43 +3,43 @@
 
 /* v8 ignore start -- exercised through CLI subprocess rebuild tests. */
 
-import { CLI_NAME } from "./branding";
-import { prompt as askPrompt } from "./credentials";
+import { CLI_NAME } from "../../branding";
+import { prompt as askPrompt } from "../../credentials";
 import {
   normalizeRebuildSandboxOptions,
   type RebuildSandboxOptions,
-} from "./domain/lifecycle/options";
+} from "../../domain/lifecycle/options";
 
-const { hydrateCredentialEnv } = require("./onboard") as {
+const { hydrateCredentialEnv } = require("../../onboard") as {
   hydrateCredentialEnv: (name: string) => string | null;
 };
-const { LOCAL_INFERENCE_PROVIDERS, REMOTE_PROVIDER_CONFIG } = require("./onboard-providers") as {
+const { LOCAL_INFERENCE_PROVIDERS, REMOTE_PROVIDER_CONFIG } = require("../../onboard-providers") as {
   LOCAL_INFERENCE_PROVIDERS: string[];
   REMOTE_PROVIDER_CONFIG: Record<string, { providerName: string; credentialEnv: string | null }>;
 };
 
-import { loadAgent } from "./agent-defs";
-import { ensureAgentBaseImage } from "./agent-onboard";
-import { getSandboxDeleteOutcome } from "./domain/sandbox/destroy";
-import * as nim from "./nim";
-import type { Session } from "./onboard-session";
-import * as onboardSession from "./onboard-session";
-import { captureOpenshell, runOpenshell } from "./adapters/openshell/runtime";
-import * as policies from "./policies";
-import * as registry from "./registry";
-import { resolveOpenshell } from "./adapters/openshell/resolve";
-import { parseLiveSandboxNames } from "./runtime-recovery";
-import { removeSandboxRegistryEntry } from "./sandbox-destroy-action";
-import { executeSandboxCommand } from "./sandbox-process-recovery-action";
+import { loadAgent } from "../../agent-defs";
+import { ensureAgentBaseImage } from "../../agent-onboard";
+import { getSandboxDeleteOutcome } from "../../domain/sandbox/destroy";
+import * as nim from "../../nim";
+import type { Session } from "../../onboard-session";
+import * as onboardSession from "../../onboard-session";
+import { captureOpenshell, runOpenshell } from "../../adapters/openshell/runtime";
+import * as policies from "../../policies";
+import * as registry from "../../registry";
+import { resolveOpenshell } from "../../adapters/openshell/resolve";
+import { parseLiveSandboxNames } from "../../runtime-recovery";
+import { removeSandboxRegistryEntry } from "./destroy";
+import { executeSandboxCommand } from "./process-recovery";
 import {
   createSystemDeps as createSessionDeps,
   getActiveSandboxSessions,
-} from "./sandbox-session-state";
-import * as sandboxState from "./sandbox-state";
-import * as sandboxVersion from "./sandbox-version";
-import { RD as _RD, B, D, G, R, YW } from "./terminal-style";
+} from "../../sandbox-session-state";
+import * as sandboxState from "../../sandbox-state";
+import * as sandboxVersion from "../../sandbox-version";
+import { B, D, G, R, RD as _RD, YW } from "../../terminal-style";
 
-const agentRuntime = require("../../bin/lib/agent-runtime");
+const agentRuntime = require("../../../../bin/lib/agent-runtime");
 
 /**
  * Emit timestamped rebuild diagnostics when verbose rebuild logging is enabled.
@@ -424,7 +424,7 @@ export async function rebuildSandbox(
   // release, build context cleanup, session failure marking).  We
   // manually release the lock and mark the session failed in the
   // onboardFailed block below.
-  const { onboard } = require("./onboard");
+  const { onboard } = require("../../onboard");
   let onboardFailed = false;
   let onboardExitCode = 1;
   const _savedExit = process.exit;
@@ -574,9 +574,7 @@ export async function rebuildSandbox(
   // Step 6: Post-restore agent-specific migration
   const rebuiltAgent = agentRuntime.getSessionAgent(sandboxName);
   const rebuiltAgentName = agentRuntime.getAgentDisplayName(rebuiltAgent);
-  const agentDef = rebuiltAgent
-    ? require("./agent-defs").loadAgent(rebuiltAgent.name)
-    : require("./agent-defs").loadAgent("openclaw");
+  const agentDef = rebuiltAgent ? loadAgent(rebuiltAgent.name) : loadAgent("openclaw");
   if (agentDef.name === "openclaw") {
     // openclaw doctor --fix validates and repairs directory structure.
     // Idempotent and safe — catches structural changes between OpenClaw versions

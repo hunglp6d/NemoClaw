@@ -1329,7 +1329,7 @@ init_nemoclaw_submodules() {
 
 is_routed_provider_requested() {
   local provider="${NEMOCLAW_PROVIDER:-}"
-  provider="${provider,,}"
+  provider="$(printf '%s' "$provider" | tr '[:upper:]' '[:lower:]')"
   [[ "$provider" == "routed" ]]
 }
 
@@ -1350,7 +1350,12 @@ install_model_router_if_present() {
     warn "Skipping model router install — llm-router submodule is not initialized."
     return 0
   fi
-  spin "Installing model router" pip3 install --quiet --user "${router_dir}[prefill,proxy]"
+  if ! spin "Installing model router" pip3 install --quiet --user "${router_dir}[prefill,proxy]"; then
+    if is_routed_provider_requested; then
+      error "pip3 install of llm-router failed"
+    fi
+    warn "Skipping model router install — pip3 install failed"
+  fi
 }
 
 install_nemoclaw() {

@@ -149,6 +149,8 @@ function isOnboardTestInternals(
     typeof value.agentSupportsWebSearch === "function" &&
     typeof value.configureWebSearch === "function" &&
     typeof value.formatSandboxBuildEstimateNote === "function" &&
+    Object.prototype.hasOwnProperty.call(value, "providerNameToOptionKey") &&
+    typeof value.providerNameToOptionKey === "function" &&
     typeof value.shouldRunCompatibleEndpointSandboxSmoke === "function" &&
     typeof value.writeSandboxConfigSyncFile === "function"
   );
@@ -2435,6 +2437,36 @@ const { setupInference } = require(${onboardPath});
     fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
       mode: 0o755,
     });
+    fs.writeFileSync(
+      path.join(fakeBin, "model-router"),
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("fs");',
+        'const http = require("http");',
+        'const path = require("path");',
+        "const args = process.argv.slice(2);",
+        'if (args[0] === "proxy-config") {',
+        '  const output = args[args.indexOf("--output") + 1];',
+        "  fs.mkdirSync(path.dirname(output), { recursive: true });",
+        '  fs.writeFileSync(output, "model_list: []\\n");',
+        "  process.exit(0);",
+        "}",
+        'if (args[0] === "proxy") {',
+        '  const port = Number(args[args.indexOf("--port") + 1] || "4000");',
+        "  const server = http.createServer((req, res) => {",
+        '    if (req.url === "/health") { res.statusCode = 200; res.end("ok"); return; }',
+        "    res.statusCode = 404;",
+        "    res.end();",
+        "  });",
+        '  server.listen(port, "127.0.0.1");',
+        "  setTimeout(() => process.exit(0), 10000);",
+        "} else {",
+        "  process.exit(1);",
+        "}",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
 
     const script = String.raw`
 const runner = require(${runnerPath});

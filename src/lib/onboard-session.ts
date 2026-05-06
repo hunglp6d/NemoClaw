@@ -74,6 +74,7 @@ export interface Session {
   credentialEnv: string | null;
   preferredInferenceApi: string | null;
   nimContainer: string | null;
+  routerPid: number | null;
   webSearchConfig: WebSearchConfig | null;
   policyPresets: string[] | null;
   messagingChannels: string[] | null;
@@ -122,6 +123,7 @@ export interface SessionUpdates {
   credentialEnv?: string;
   preferredInferenceApi?: string;
   nimContainer?: string;
+  routerPid?: number;
   webSearchConfig?: WebSearchConfig | null;
   policyPresets?: string[];
   messagingChannels?: string[];
@@ -187,6 +189,10 @@ export function isObject(value: unknown): value is UnknownRecord {
 
 function readString(value: SessionJsonValue | undefined): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function readPositiveInteger(value: SessionJsonValue | undefined): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function readStringArray(value: SessionJsonValue | undefined): string[] | null {
@@ -297,6 +303,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     credentialEnv: overrides.credentialEnv ?? null,
     preferredInferenceApi: overrides.preferredInferenceApi ?? null,
     nimContainer: overrides.nimContainer ?? null,
+    routerPid: readPositiveInteger(overrides.routerPid),
     webSearchConfig:
       overrides.webSearchConfig?.fetchEnabled === true ? { fetchEnabled: true } : null,
     policyPresets: readStringArray(overrides.policyPresets),
@@ -333,6 +340,7 @@ export function normalizeSession(data: Session | SessionJsonValue | undefined): 
     credentialEnv: readString(data.credentialEnv),
     preferredInferenceApi: readString(data.preferredInferenceApi),
     nimContainer: readString(data.nimContainer),
+    routerPid: readPositiveInteger(data.routerPid),
     webSearchConfig: parseWebSearchConfig(data.webSearchConfig),
     policyPresets: readStringArray(data.policyPresets),
     messagingChannels: readStringArray(data.messagingChannels),

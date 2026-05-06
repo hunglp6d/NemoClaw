@@ -814,6 +814,29 @@ function loadBlueprintProfile(
 
 const ROUTER_HEALTH_RETRIES = 15;
 const ROUTER_HEALTH_INTERVAL_MS = 2000;
+const ROUTER_HEALTH_TIMEOUT_MS = 3000;
+
+async function isRouterHealthy(port: number, timeoutMs = ROUTER_HEALTH_TIMEOUT_MS): Promise<boolean> {
+  const http = require("http");
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const settle = (healthy: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(healthy);
+    };
+    const request = http
+      .get(`http://127.0.0.1:${port}/health`, (res: import("node:http").IncomingMessage) => {
+        res.resume();
+        settle((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300);
+      })
+      .on("error", () => settle(false));
+    request.setTimeout(timeoutMs, () => {
+      request.destroy();
+      settle(false);
+    });
+  });
+}
 
 /**
  * Start the model-router proxy and wait for it to become healthy.
@@ -831,16 +854,6 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
   const litellmConfigPath = path.join(stateDir, "litellm-proxy.yaml");
 
   fs.mkdirSync(stateDir, { recursive: true });
-
-  const http = require("http");
-  const isRouterHealthy = async () =>
-    new Promise<boolean>((resolve) => {
-      http
-        .get(`http://127.0.0.1:${port}/health`, (res: import("node:http").IncomingMessage) =>
-          resolve((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300),
-        )
-        .on("error", () => resolve(false));
-    });
 
   const proxyConfigResult = spawnSync(
     "model-router",
@@ -864,7 +877,7 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
     if (!credEnvVars.OPENAI_API_KEY) credEnvVars.OPENAI_API_KEY = _providerKey;
   }
 
-  if (await isRouterHealthy()) {
+  if (await isRouterHealthy(port)) {
     throw new Error(
       `Port ${port} already has a healthy router endpoint; refusing to start a second router.`,
     );
@@ -902,7 +915,7 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
   for (let attempt = 0; attempt < ROUTER_HEALTH_RETRIES; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, ROUTER_HEALTH_INTERVAL_MS));
     if (childExited) break;
-    const healthy = await isRouterHealthy();
+    const healthy = await isRouterHealthy(port);
     let processAlive = true;
     try {
       process.kill(pid, 0);
@@ -925,6 +938,41 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
     `Model router failed to become healthy on port ${port} after ${ROUTER_HEALTH_RETRIES} attempts` +
       (childExitDetail ? ` (${childExitDetail})` : ""),
   );
+}
+
+function getRoutedProfile(): BlueprintInferenceProfile {
+  const bp = loadBlueprintProfile("routed");
+  if (!bp || bp.router?.enabled !== true) {
+    throw new Error("Router is not enabled in nemoclaw-blueprint/blueprint.yaml.");
+  }
+  return bp;
+}
+
+function isRoutedInferenceProvider(provider: string | null | undefined): boolean {
+  if (!provider) return false;
+  if (provider === "nvidia-router") return true;
+  const bp = loadBlueprintProfile("routed");
+  return Boolean(bp?.provider_name && provider === bp.provider_name);
+}
+
+async function reconcileModelRouter(): Promise<void> {
+  const bp = getRoutedProfile();
+  const routerPort = bp.router.port || 4000;
+  const routerCredentialEnv = bp.router.credential_env || bp.credential_env || "NVIDIA_API_KEY";
+  hydrateCredentialEnv(routerCredentialEnv);
+
+  if (await isRouterHealthy(routerPort)) {
+    console.log(`  ✓ Model router is already healthy on port ${routerPort}`);
+    return;
+  }
+
+  console.log("  Starting model router...");
+  const routerPid = await startModelRouter(bp.router);
+  console.log(`  ✓ Model router started (PID ${routerPid}) on port ${routerPort}`);
+  onboardSession.updateSession((current: Session) => {
+    current.routerPid = routerPid;
+    return current;
+  });
 }
 
 // ── Base image digest resolution ────────────────────────────────
@@ -6681,23 +6729,6 @@ async function setupNim(
             await ensureNamedCredential(routerCredentialEnv, "Model Router API key", null);
           }
         }
-        console.log("  Starting model router...");
-        try {
-          const routerPid = await startModelRouter(bp.router);
-          const routerPort = bp.router.port || 4000;
-          console.log(`  ✓ Model router started (PID ${routerPid}) on port ${routerPort}`);
-          onboardSession.updateSession((current) => {
-            (current as Session & { routerPid?: number }).routerPid = routerPid;
-            return current;
-          });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`  ✗ Failed to start model router: ${message}`);
-          if (isNonInteractive()) process.exit(1);
-          console.log("  Returning to provider selection.");
-          console.log("");
-          continue selectionLoop;
-        }
         provider = bp.provider_name || "nvidia-router";
         model = bp.model;
         const { HOST_GATEWAY_URL } = require("./local-inference");
@@ -6958,9 +6989,15 @@ async function setupInference(
     // Do not mutate ~/.nemoclaw/credentials.json here: local Ollama now uses
     // OLLAMA_PROXY_CREDENTIAL_ENV, so any saved OPENAI_API_KEY remains available
     // to unrelated OpenAI-backed sandboxes.
-  } else if (provider === "nvidia-router") {
+  } else if (isRoutedInferenceProvider(provider)) {
     // Blueprint profile provider (e.g., nvidia-router for the routed profile).
     // Same pattern as vllm-local: upsert the provider and set the inference route.
+    try {
+      await reconcileModelRouter();
+    } catch (err) {
+      console.error(`  ✗ Failed to start model router: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
     const resolvedCredentialEnv = credentialEnv || "NVIDIA_API_KEY";
     const credentialValue = hydrateCredentialEnv(resolvedCredentialEnv);
     const env = credentialValue ? { [resolvedCredentialEnv]: credentialValue } : {};
@@ -9407,6 +9444,16 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       const resumeInference =
         !forceProviderSelection && resume && isInferenceRouteReady(provider, model);
       if (resumeInference) {
+        if (isRoutedInferenceProvider(provider)) {
+          try {
+            await reconcileModelRouter();
+          } catch (err) {
+            console.error(
+              `  ✗ Failed to reconcile model router: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            process.exit(1);
+          }
+        }
         skippedStepMessage("inference", `${provider} / ${model}`);
         if (nimContainer && sandboxName) {
           registry.updateSandbox(sandboxName, { nimContainer });

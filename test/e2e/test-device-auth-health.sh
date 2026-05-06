@@ -93,6 +93,8 @@ setup_ssh() {
   SSH_CONFIG="$(mktemp)"
   if ! openshell sandbox ssh-config "$SANDBOX_NAME" >"$SSH_CONFIG" 2>/dev/null; then
     info "Failed to get SSH config for '$SANDBOX_NAME'"
+    rm -f "$SSH_CONFIG"
+    SSH_CONFIG=""
     return 1
   fi
 }
@@ -106,7 +108,7 @@ sandbox_exec() {
     -o UserKnownHostsFile=/dev/null \
     -o ConnectTimeout=10 \
     -o LogLevel=ERROR \
-    "$SANDBOX_NAME" "$cmd" 2>/dev/null
+    "openshell-${SANDBOX_NAME}" "$cmd" 2>/dev/null
 }
 
 # ══════════════════════════════════════════════════════════════════════════════

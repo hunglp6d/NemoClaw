@@ -18,6 +18,13 @@ export interface StreamSandboxCreateOptions {
   heartbeatIntervalMs?: number;
   silentPhaseMs?: number;
   logLine?: (line: string) => void;
+  // Initial progress phase:
+  //   build  — docker-building the sandbox image
+  //   upload — pushing the built image into the gateway registry
+  //   create — k3s provisioning the pod from the image
+  //   ready  — waiting for the pod to reach Ready state
+  // Defaults to "build".
+  initialPhase?: "build" | "upload" | "create" | "ready";
   spawnImpl?: (
     command: string,
     args: readonly string[],
@@ -31,12 +38,58 @@ export interface StreamableReadable {
   destroy?(): void;
 }
 
-export interface StreamableChildProcess
-  extends Pick<ChildProcess, "kill" | "removeAllListeners" | "unref"> {
+export interface StreamableChildProcess {
   stdout: StreamableReadable | null;
   stderr: StreamableReadable | null;
+  kill?(signal?: NodeJS.Signals | number): boolean;
+  removeAllListeners?(event?: string | symbol): void;
+  unref?(): void;
   on(event: "error", listener: (error: Error & { code?: string }) => void): this;
   on(event: "close", listener: (code: number | null) => void): this;
+}
+
+export const BUILD_PROGRESS_PATTERNS: readonly RegExp[] = [
+  /^ {2}Building image /,
+  /^ {2}Step \d+\/\d+ : /,
+  /^#\d+ \[/,
+  /^#\d+ (DONE|CACHED)\b/,
+];
+
+const UPLOAD_PROGRESS_PATTERNS: readonly RegExp[] = [
+  /^ {2}Pushing image /,
+  /^\s*\[progress\]/,
+  /^ {2}Image .*available in the gateway/,
+];
+
+// Pull-phase indicators. Detect classic Docker pull output (`<tag>: Pulling
+// from <ref>`, `<id>: Pulling fs layer / Downloading / Extracting / Pull
+// complete`, `Status: Downloaded`, `Digest:`) plus BuildKit pull progress
+// (`#N resolve <ref>`, `#N sha256:<id> <size> / <total>`). The tag prefix
+// regex uses [^:\s]+ so non-lowercase tags (`v1.2.3`, `cuda-12.5`, `12.4`)
+// also match. See #1829.
+const PULL_PROGRESS_PATTERNS: readonly RegExp[] = [
+  /^\s*(?:[^:\s]+:\s+)?Pulling from \S+/,
+  /^\s*[a-f0-9]{6,}: (?:Pulling fs layer|Waiting|Downloading|Extracting|Pull complete|Verifying Checksum|Download complete)\b/,
+  /^\s*Status: (?:Downloaded|Image is up to date)/,
+  /^\s*Digest: sha256:[a-f0-9]{8,}/,
+  /^\s*#\d+\s+(?:resolve\s+\S+|sha256:[a-f0-9]+\s+[\d.]+\s*(?:B|KB|MB|GB)\s*\/)/,
+];
+
+const VISIBLE_PROGRESS_PATTERNS: readonly RegExp[] = [
+  ...BUILD_PROGRESS_PATTERNS,
+  /^ {2}Context: /,
+  /^ {2}Gateway: /,
+  /^Successfully built /,
+  /^Successfully tagged /,
+  /^ {2}Built image /,
+  ...UPLOAD_PROGRESS_PATTERNS,
+  ...PULL_PROGRESS_PATTERNS,
+  /^Created sandbox: /,
+  /^✓ /,
+];
+
+function matchesAny(line: string, patterns: readonly RegExp[]) {
+  return patterns.some((pattern) => pattern.test(line));
 }
 
 export function streamSandboxCreate(
@@ -44,11 +97,11 @@ export function streamSandboxCreate(
   env: NodeJS.ProcessEnv = process.env,
   options: StreamSandboxCreateOptions = {},
 ): Promise<StreamSandboxCreateResult> {
-  const child = (options.spawnImpl ?? spawn)("bash", ["-lc", command], {
+  const child: StreamableChildProcess = (options.spawnImpl ?? spawn)("bash", ["-lc", command], {
     cwd: ROOT,
     env,
     stdio: ["ignore", "pipe", "pipe"],
-  }) as StreamableChildProcess;
+  });
 
   const logLine = options.logLine ?? console.log;
   const lines: string[] = [];
@@ -62,7 +115,7 @@ export function streamSandboxCreate(
   const silentPhaseMs = options.silentPhaseMs || 15000;
   const startedAt = Date.now();
   let lastOutputAt = startedAt;
-  type CreatePhase = "build" | "upload" | "create" | "ready";
+  type CreatePhase = "pull" | "build" | "upload" | "create" | "ready";
 
   let currentPhase: CreatePhase | null = null;
   let lastHeartbeatPhase: CreatePhase | null = null;
@@ -98,15 +151,17 @@ export function streamSandboxCreate(
     lastHeartbeatPhase = null;
     lastHeartbeatBucket = -1;
     const phaseLine =
-      nextPhase === "build"
-        ? "  Building sandbox image..."
-        : nextPhase === "upload"
-          ? "  Uploading image into OpenShell gateway..."
-          : nextPhase === "create"
-            ? "  Creating sandbox in gateway..."
-            : nextPhase === "ready"
-              ? "  Waiting for sandbox to become ready..."
-              : null;
+      nextPhase === "pull"
+        ? "  Pulling base image from registry..."
+        : nextPhase === "build"
+          ? "  Building sandbox image..."
+          : nextPhase === "upload"
+            ? "  Uploading image into OpenShell gateway..."
+            : nextPhase === "create"
+              ? "  Creating sandbox in gateway..."
+              : nextPhase === "ready"
+                ? "  Waiting for sandbox to become ready..."
+                : null;
     if (phaseLine) printProgressLine(phaseLine);
   }
 
@@ -115,13 +170,11 @@ export function streamSandboxCreate(
     if (!line) return;
     lines.push(line);
     lastOutputAt = Date.now();
-    if (/^ {2}Building image /.test(line) || /^ {2}Step \d+\/\d+ : /.test(line)) {
+    if (matchesAny(line, BUILD_PROGRESS_PATTERNS)) {
       setPhase("build");
-    } else if (
-      /^ {2}Pushing image /.test(line) ||
-      /^\s*\[progress\]/.test(line) ||
-      /^ {2}Image .*available in the gateway/.test(line)
-    ) {
+    } else if (matchesAny(line, PULL_PROGRESS_PATTERNS)) {
+      setPhase("pull");
+    } else if (matchesAny(line, UPLOAD_PROGRESS_PATTERNS)) {
       setPhase("upload");
     } else if (/^Created sandbox: /.test(line)) {
       setPhase("create");
@@ -133,20 +186,7 @@ export function streamSandboxCreate(
   }
 
   function shouldShowLine(line: string) {
-    return (
-      /^ {2}Building image /.test(line) ||
-      /^ {2}Step \d+\/\d+ : /.test(line) ||
-      /^ {2}Context: /.test(line) ||
-      /^ {2}Gateway: /.test(line) ||
-      /^Successfully built /.test(line) ||
-      /^Successfully tagged /.test(line) ||
-      /^ {2}Built image /.test(line) ||
-      /^ {2}Pushing image /.test(line) ||
-      /^\s*\[progress\]/.test(line) ||
-      /^ {2}Image .*available in the gateway/.test(line) ||
-      /^Created sandbox: /.test(line) ||
-      /^✓ /.test(line)
-    );
+    return matchesAny(line, VISIBLE_PROGRESS_PATTERNS);
   }
 
   function onChunk(chunk: Buffer | string) {
@@ -214,7 +254,7 @@ export function streamSandboxCreate(
     : null;
   readyTimer?.unref?.();
 
-  setPhase("build");
+  setPhase(options.initialPhase ?? "build");
   const heartbeatTimer = setInterval(() => {
     if (settled) return;
     const silentForMs = Date.now() - lastOutputAt;
@@ -225,13 +265,15 @@ export function streamSandboxCreate(
       return;
     }
     const heartbeatLine =
-      currentPhase === "upload"
-        ? `  Still uploading image into OpenShell gateway... (${elapsed}s elapsed)`
-        : currentPhase === "create"
-          ? `  Still creating sandbox in gateway... (${elapsed}s elapsed)`
-          : currentPhase === "ready"
-            ? `  Still waiting for sandbox to become ready... (${elapsed}s elapsed)`
-            : `  Still building sandbox image... (${elapsed}s elapsed)`;
+      currentPhase === "pull"
+        ? `  Still pulling base image from registry... (${elapsed}s elapsed)`
+        : currentPhase === "upload"
+          ? `  Still uploading image into OpenShell gateway... (${elapsed}s elapsed)`
+          : currentPhase === "create"
+            ? `  Still creating sandbox in gateway... (${elapsed}s elapsed)`
+            : currentPhase === "ready"
+              ? `  Still waiting for sandbox to become ready... (${elapsed}s elapsed)`
+              : `  Still building sandbox image... (${elapsed}s elapsed)`;
     if (trimDisplayLine(heartbeatLine) !== lastPrintedLine) {
       printProgressLine(heartbeatLine);
       lastHeartbeatPhase = currentPhase;
@@ -244,7 +286,9 @@ export function streamSandboxCreate(
     resolvePromise = resolve;
     child.on("error", (error) => {
       const code = error?.code;
-      const detail = code ? `spawn failed: ${error.message} (${code})` : `spawn failed: ${error.message}`;
+      const detail = code
+        ? `spawn failed: ${error.message} (${code})`
+        : `spawn failed: ${error.message}`;
       lines.push(detail);
       finish(1);
     });

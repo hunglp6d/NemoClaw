@@ -10,7 +10,6 @@
 
 const GATEWAY_NAME = "nemoclaw";
 
-// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 function stripAnsi(value: string): string {
@@ -44,9 +43,13 @@ export function parseSandboxStatus(output: string, sandboxName: string): string 
 /**
  * Check if a sandbox is in Ready state from `openshell sandbox list` output.
  * Strips ANSI codes and exact-matches the sandbox name in the first column.
+ * Checks all columns for "Ready" (not just column 2) because the column
+ * layout of `openshell sandbox list` varies across OpenShell versions.
  */
 export function isSandboxReady(output: string, sandboxName: string): boolean {
-  return parseSandboxStatus(output, sandboxName) === "Ready";
+  const cols = parseSandboxRow(output, sandboxName);
+  if (!cols) return false;
+  return cols.includes("Ready") && !cols.includes("NotReady");
 }
 
 /**

@@ -70,9 +70,11 @@ Availability is not limited to these entries, but untested configurations may ha
 |----|-------------------|--------|-------|
 | Linux | Docker | Tested | Primary tested path. |
 | macOS (Apple Silicon) | Colima, Docker Desktop | Tested with limitations | Install Xcode Command Line Tools (`xcode-select --install`) and start the runtime before running the installer. |
-| DGX Spark | Docker | Tested | Use the standard installer and `nemoclaw onboard`. |
+| DGX Spark | Docker | Tested | Use the standard installer and `nemoclaw onboard`. For an end-to-end walkthrough with local Ollama inference, see the [NVIDIA Spark playbook](https://build.nvidia.com/spark/nemoclaw). |
 | Windows WSL2 | Docker Desktop (WSL backend) | Tested with limitations | Requires WSL2 with Docker Desktop backend. |
 <!-- platform-matrix:end -->
+
+For platform-specific pre-setup (for example, Windows WSL 2), see [Prerequisites](https://docs.nvidia.com/nemoclaw/latest/get-started/prerequisites.html).
 
 ### Install NemoClaw and Onboard OpenClaw Agent
 
@@ -89,6 +91,13 @@ The script installs Node.js if it is not already present, then runs the guided o
 
 ```bash
 curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
+```
+
+The piped installer prompts through your terminal. In headless scripts or CI,
+pass explicit acceptance to the `bash` side of the pipe:
+
+```bash
+curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_NON_INTERACTIVE=1 NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
 ```
 
 If you use nvm or fnm to manage Node.js, the installer may not update your current shell's PATH.
@@ -133,7 +142,7 @@ openclaw agent --agent main --local -m "hello" --session-id test
 
 NemoClaw includes an optional model router that automatically picks the most efficient model for each query. Instead of sending every request to a single large model, the router uses a lightweight encoder to predict which model in a pool can handle each query correctly, then routes to the cheapest one that meets an accuracy threshold.
 
-The router uses the [NVIDIA LLM Router v3](https://github.com/NVIDIA-AI-Blueprints/llm-router/tree/v3) prefill routing engine and runs on the host as a LiteLLM proxy. The sandbox reaches it through the OpenShell gateway.
+The router uses the [NVIDIA LLM Router v3](https://github.com/NVIDIA-AI-Blueprints/llm-router/tree/v3) prefill routing engine and runs on the host as a LiteLLM proxy. The sandbox reaches it through the OpenShell gateway and continues to call `https://inference.local/v1`; do not probe `localhost:4000` or `host.openshell.internal` directly from inside the sandbox.
 
 #### Enable during onboard
 
@@ -183,10 +192,10 @@ Credentials flow through the OpenShell provider system. The sandbox never sees r
 
 ### Uninstall
 
-To remove NemoClaw and all resources created during setup, run the uninstall script:
+To remove NemoClaw and all resources created during setup, run the CLI's built-in uninstall command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NVIDIA/NemoClaw/refs/heads/main/uninstall.sh | bash
+nemoclaw uninstall
 ```
 
 | Flag               | Effect                                              |
@@ -194,6 +203,16 @@ curl -fsSL https://raw.githubusercontent.com/NVIDIA/NemoClaw/refs/heads/main/uni
 | `--yes`            | Skip the confirmation prompt.                       |
 | `--keep-openshell` | Leave the `openshell` binary installed.              |
 | `--delete-models`  | Also remove NemoClaw-pulled Ollama models.           |
+
+`nemoclaw uninstall` runs the version-pinned `uninstall.sh` shipped with your installed CLI, with no network fetch at uninstall time.
+
+If the `nemoclaw` CLI is missing or broken, fall back to the hosted script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NVIDIA/NemoClaw/refs/heads/main/uninstall.sh | bash
+```
+
+For a full comparison of the two forms, see [`nemoclaw uninstall` vs. the hosted `uninstall.sh`](https://docs.nvidia.com/nemoclaw/latest/reference/commands.html#nemoclaw-uninstall-vs-the-hosted-uninstallsh).
 
 For troubleshooting installation or onboarding issues, see the [Troubleshooting guide](https://docs.nvidia.com/nemoclaw/latest/reference/troubleshooting.html).
 
@@ -208,6 +227,7 @@ Refer to the following pages on the official documentation website for more info
 | [Overview](https://docs.nvidia.com/nemoclaw/latest/about/overview.html) | What NemoClaw does and how it fits together. |
 | [How It Works](https://docs.nvidia.com/nemoclaw/latest/about/how-it-works.html) | Plugin, blueprint, sandbox lifecycle, and protection layers. |
 | [Architecture](https://docs.nvidia.com/nemoclaw/latest/reference/architecture.html) | Plugin structure, blueprint lifecycle, sandbox environment, and host-side state. |
+| [Prerequisites](https://docs.nvidia.com/nemoclaw/latest/get-started/prerequisites.html) | Hardware, software, and supported platforms, with any platform-specific pre-setup. |
 | [Inference Options](https://docs.nvidia.com/nemoclaw/latest/inference/inference-options.html) | Supported providers, validation, and routed inference configuration. |
 | [Network Policies](https://docs.nvidia.com/nemoclaw/latest/reference/network-policies.html) | Baseline rules, operator approval flow, and egress control. |
 | [Customize Network Policy](https://docs.nvidia.com/nemoclaw/latest/network-policy/customize-network-policy.html) | Static and dynamic policy changes, presets. |

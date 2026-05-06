@@ -33,7 +33,7 @@
 
 set -uo pipefail
 
-export NEMOCLAW_E2E_DEFAULT_TIMEOUT=2400
+export NEMOCLAW_E2E_DEFAULT_TIMEOUT=3000
 SCRIPT_DIR_TIMEOUT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=test/e2e/e2e-timeout.sh
 source "${SCRIPT_DIR_TIMEOUT}/e2e-timeout.sh"

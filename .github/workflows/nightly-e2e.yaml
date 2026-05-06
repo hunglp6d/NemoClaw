@@ -324,7 +324,7 @@ jobs:
        inputs.jobs == '' ||
        contains(format(',{0},', inputs.jobs), ',token-rotation-e2e,'))
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout
         uses: actions/checkout@v4

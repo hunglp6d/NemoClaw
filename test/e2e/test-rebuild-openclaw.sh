@@ -28,8 +28,13 @@
 set -euo pipefail
 
 SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-e2e-rebuild-oc}"
+
+# shellcheck source=test/e2e/lib/sandbox-teardown.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/sandbox-teardown.sh"
+register_sandbox_for_teardown "$SANDBOX_NAME"
+
 OLD_OPENCLAW_VERSION="2026.3.11"
-MARKER_FILE="/sandbox/.openclaw-data/workspace/rebuild-marker.txt"
+MARKER_FILE="/sandbox/.openclaw/workspace/rebuild-marker.txt"
 MARKER_CONTENT="REBUILD_OC_E2E_$(date +%s)"
 REGISTRY_FILE="$HOME/.nemoclaw/sandboxes.json"
 SESSION_FILE="$HOME/.nemoclaw/onboard-session.json"
@@ -137,7 +142,7 @@ cat >"${TESTDIR}/Dockerfile" <<DOCKERFILE
 FROM ${OLD_BASE_TAG}
 USER sandbox
 WORKDIR /sandbox
-RUN mkdir -p /sandbox/.openclaw-data/workspace /sandbox/.openclaw && echo '{}' > /sandbox/.openclaw/openclaw.json
+RUN mkdir -p /sandbox/.openclaw/workspace /sandbox/.openclaw && echo '{}' > /sandbox/.openclaw/openclaw.json
 CMD ["/bin/bash"]
 DOCKERFILE
 
@@ -163,7 +168,7 @@ pass "Old sandbox created (OpenClaw ${OLD_OPENCLAW_VERSION})"
 info "Phase 4: Writing markers and registering sandbox..."
 
 openshell sandbox exec --name "${SANDBOX_NAME}" -- \
-  sh -c "mkdir -p /sandbox/.openclaw-data/workspace && echo '${MARKER_CONTENT}' > ${MARKER_FILE}" \
+  sh -c "mkdir -p /sandbox/.openclaw/workspace && echo '${MARKER_CONTENT}' > ${MARKER_FILE}" \
   || fail "Failed to write marker file"
 
 # Verify
@@ -441,7 +446,7 @@ fi
 
 # ── Cleanup ─────────────────────────────────────────────────────────
 info "Cleaning up..."
-nemoclaw "${SANDBOX_NAME}" destroy --yes 2>/dev/null || true
+[[ "${NEMOCLAW_E2E_KEEP_SANDBOX:-}" = "1" ]] || nemoclaw "${SANDBOX_NAME}" destroy --yes 2>/dev/null || true
 docker rmi "${OLD_BASE_TAG}" 2>/dev/null || true
 
 echo ""

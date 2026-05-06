@@ -1338,7 +1338,11 @@ install_nemoclaw() {
     spin "Installing ${_CLI_DISPLAY} dependencies" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm install --ignore-scripts"
     spin "Building ${_CLI_DISPLAY} CLI modules" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm run --if-present build:cli"
     spin "Building ${_CLI_DISPLAY} plugin" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\"/nemoclaw && npm install --ignore-scripts && npm run build"
-    if command_exists pip3 && [ -d "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router" ]; then
+    # Initialize submodules (e.g., llm-router for model routing support).
+    # The GitHub-clone path already does this, but the source-checkout path
+    # (used in CI after actions/checkout) needs it too.
+    git -C "$NEMOCLAW_SOURCE_ROOT" submodule update --init --depth 1 2>/dev/null || true
+    if command_exists pip3 && [ -f "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router/pyproject.toml" ]; then
       spin "Installing model router" pip3 install --quiet --user "$NEMOCLAW_SOURCE_ROOT/nemoclaw-blueprint/router/llm-router[prefill,proxy]"
     fi
     spin "Linking ${_CLI_DISPLAY} CLI" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm link"
@@ -1376,7 +1380,7 @@ install_nemoclaw() {
     spin "Installing ${_CLI_DISPLAY} dependencies" bash -c "cd \"$nemoclaw_src\" && npm install --ignore-scripts"
     spin "Building ${_CLI_DISPLAY} CLI modules" bash -c "cd \"$nemoclaw_src\" && npm run --if-present build:cli"
     spin "Building ${_CLI_DISPLAY} plugin" bash -c "cd \"$nemoclaw_src\"/nemoclaw && npm install --ignore-scripts && npm run build"
-    if command_exists pip3 && [ -d "$nemoclaw_src/nemoclaw-blueprint/router/llm-router" ]; then
+    if command_exists pip3 && [ -f "$nemoclaw_src/nemoclaw-blueprint/router/llm-router/pyproject.toml" ]; then
       spin "Installing model router" pip3 install --quiet --user "$nemoclaw_src/nemoclaw-blueprint/router/llm-router[prefill,proxy]"
     fi
     spin "Linking ${_CLI_DISPLAY} CLI" bash -c "cd \"$nemoclaw_src\" && npm link"

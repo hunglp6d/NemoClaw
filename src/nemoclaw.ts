@@ -44,7 +44,7 @@ const { parseGatewayInference } = require("./lib/inference-config");
 const policies = require("./lib/policies");
 const { probeProviderHealth } = require("./lib/inference-health");
 const { buildStatusCommandDeps } = require("./lib/status-command-deps");
-const { help, version } = require("./lib/root-help-action");
+const { help, version } = require("./lib/actions/root-help");
 const onboardSession = require("./lib/onboard-session");
 import type { Session } from "./lib/onboard-session";
 const { stripAnsi } = require("./lib/adapters/openshell/client");
@@ -60,13 +60,13 @@ const {
   isSandboxConnectFlag,
   parseSandboxConnectArgs,
   printSandboxConnectHelp,
-} = require("./lib/sandbox-connect-action");
+} = require("./lib/actions/sandbox/connect");
 const {
   executeSandboxCommand,
-} = require("./lib/sandbox-process-recovery-action");
+} = require("./lib/actions/sandbox/process-recovery");
 const {
   getSandboxDeleteOutcome,
-} = require("./lib/sandbox-destroy-action");
+} = require("./lib/actions/sandbox/destroy");
 const { runRegisteredOclifCommand } = require("./lib/cli/oclif-runner");
 const { isErrnoException }: typeof import("./lib/errno") = require("./lib/errno");
 const agentRuntime = require("../bin/lib/agent-runtime");

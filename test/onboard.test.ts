@@ -1051,7 +1051,7 @@ describe("onboard helpers", () => {
     );
   });
 
-  it("adds Kimi K2.6 compat for NVIDIA Endpoints on the routed inference provider", () => {
+  it("leaves Kimi K2.6 compat to the model-specific setup registry", () => {
     assert.deepEqual(
       getSandboxInferenceConfig("moonshotai/kimi-k2.6", "nvidia-prod", "openai-completions"),
       {
@@ -1059,11 +1059,7 @@ describe("onboard helpers", () => {
         primaryModelRef: "inference/moonshotai/kimi-k2.6",
         inferenceBaseUrl: "https://inference.local/v1",
         inferenceApi: "openai-completions",
-        inferenceCompat: {
-          requiresStringContent: true,
-          maxTokensField: "max_tokens",
-          requiresToolResultName: true,
-        },
+        inferenceCompat: null,
       },
     );
   });

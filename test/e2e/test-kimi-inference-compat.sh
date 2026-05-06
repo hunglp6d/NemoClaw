@@ -500,7 +500,7 @@ check_inference_route() {
 run_agent_prompt() {
   local prompt remote_cmd agent_exit=0
   prompt="Use the exec tool to run hostname, date, and uptime. Run each command and then say exactly: hostname, date, and uptime completed successfully."
-  remote_cmd="rm -f /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.trajectory.jsonl 2>/dev/null || true; nemoclaw-start openclaw agent --agent main --json --session-id $(quote_for_remote_sh "$SESSION_ID") -m $(quote_for_remote_sh "$prompt")"
+  remote_cmd="rm -f /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${SESSION_ID}.trajectory.jsonl 2>/dev/null || true; nemoclaw-start openclaw agent --agent main --session-id $(quote_for_remote_sh "$SESSION_ID") -m $(quote_for_remote_sh "$prompt")"
   run_with_timeout 420 openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd" >"$AGENT_LOG" 2>&1 || agent_exit=$?
   if [ "$agent_exit" -eq 0 ] && grep -q "hostname, date, and uptime completed successfully." "$AGENT_LOG"; then
     pass "K4: OpenClaw agent completed after Kimi tool results"

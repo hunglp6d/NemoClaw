@@ -106,6 +106,7 @@ type OnboardTestInternals = {
     value: string | null | undefined,
     flavor: "openai" | "anthropic",
   ) => string;
+  providerNameToOptionKey: (name?: string | null) => string | null;
   parsePolicyPresetEnv: (value: string | null) => string[];
   patchStagedDockerfile: ShimFn<void>;
   pullAndResolveBaseImageDigest: () => { digest: string; ref: string } | null;
@@ -199,6 +200,7 @@ const {
   configureWebSearch,
   isLoopbackHostname,
   normalizeProviderBaseUrl,
+  providerNameToOptionKey,
   parsePolicyPresetEnv,
   patchStagedDockerfile,
   pullAndResolveBaseImageDigest,
@@ -837,6 +839,10 @@ describe("onboard helpers", () => {
       inferenceApi: "openai-completions",
       inferenceCompat: null,
     });
+  });
+
+  it("maps persisted Model Router provider back to the routed provider option", () => {
+    assert.equal(providerNameToOptionKey("nvidia-router"), "routed");
   });
 
   it("leaves Kimi K2.6 compat to the model-specific setup registry", () => {

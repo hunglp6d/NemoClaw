@@ -832,6 +832,16 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
 
   fs.mkdirSync(stateDir, { recursive: true });
 
+  const http = require("http");
+  const isRouterHealthy = async () =>
+    new Promise<boolean>((resolve) => {
+      http
+        .get(`http://127.0.0.1:${port}/health`, (res: import("node:http").IncomingMessage) =>
+          resolve((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300),
+        )
+        .on("error", () => resolve(false));
+    });
+
   const proxyConfigResult = spawnSync(
     "model-router",
     ["proxy-config", "--config", poolConfigPath, "--output", litellmConfigPath],
@@ -852,6 +862,12 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
   if (_providerKey) {
     if (!credEnvVars[credName]) credEnvVars[credName] = _providerKey;
     if (!credEnvVars.OPENAI_API_KEY) credEnvVars.OPENAI_API_KEY = _providerKey;
+  }
+
+  if (await isRouterHealthy()) {
+    throw new Error(
+      `Port ${port} already has a healthy router endpoint; refusing to start a second router.`,
+    );
   }
 
   const child = spawn(
@@ -876,18 +892,29 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
   if (!pid) {
     throw new Error("Failed to start model-router proxy: no PID returned");
   }
+  let childExited = false;
+  let childExitDetail = "";
+  child.once("exit", (code: number | null, signal: string | null) => {
+    childExited = true;
+    childExitDetail = `child exited with code ${code ?? "null"}${signal ? ` signal ${signal}` : ""}`;
+  });
 
-  const http = require("http");
   for (let attempt = 0; attempt < ROUTER_HEALTH_RETRIES; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, ROUTER_HEALTH_INTERVAL_MS));
-    const healthy = await new Promise((resolve) => {
-      http
-        .get(`http://127.0.0.1:${port}/health`, (res: import("node:http").IncomingMessage) =>
-          resolve((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300),
-        )
-        .on("error", () => resolve(false));
-    });
-    if (healthy) return pid;
+    if (childExited) break;
+    const healthy = await isRouterHealthy();
+    let processAlive = true;
+    try {
+      process.kill(pid, 0);
+    } catch {
+      processAlive = false;
+    }
+    if (healthy && processAlive) return pid;
+    if (!processAlive) {
+      childExited = true;
+      if (!childExitDetail) childExitDetail = "child process is no longer running";
+      break;
+    }
   }
   try {
     process.kill(pid, "SIGTERM");
@@ -895,7 +922,8 @@ async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<numbe
     // already dead
   }
   throw new Error(
-    `Model router failed to become healthy on port ${port} after ${ROUTER_HEALTH_RETRIES} attempts`,
+    `Model router failed to become healthy on port ${port} after ${ROUTER_HEALTH_RETRIES} attempts` +
+      (childExitDetail ? ` (${childExitDetail})` : ""),
   );
 }
 
@@ -5310,6 +5338,7 @@ function providerNameToOptionKey(
   opts: { hasNimContainer?: boolean } = {},
 ): string | null {
   if (!name) return null;
+  if (name === "nvidia-router") return "routed";
   if (name === "ollama-local") return "ollama";
   // Local NIM and standalone vLLM both persist as provider="vllm-local". NIM
   // is positively identified by a nimContainer record; the absence of one in
@@ -6630,19 +6659,25 @@ async function setupNim(
         }
         const routerCredentialEnv = bp.credential_env || "OPENAI_API_KEY";
         credentialEnv = routerCredentialEnv;
+        const routedCredential =
+          hydrateCredentialEnv(routerCredentialEnv) ||
+          normalizeCredentialValue(bp.credential_default || "");
+        if (routedCredential) {
+          process.env[routerCredentialEnv] = routedCredential;
+        }
         const _providerKeyHint = (process.env.NEMOCLAW_PROVIDER_KEY || "").trim();
         if (_providerKeyHint && !process.env[routerCredentialEnv]) {
           process.env[routerCredentialEnv] = _providerKeyHint;
         }
         if (isNonInteractive()) {
-          if (!process.env[routerCredentialEnv] && !bp.credential_default) {
+          if (!process.env[routerCredentialEnv]) {
             console.error(
               `  ${routerCredentialEnv} (or NEMOCLAW_PROVIDER_KEY) is required for Model Router in non-interactive mode.`,
             );
             process.exit(1);
           }
         } else {
-          if (!process.env[routerCredentialEnv] && !bp.credential_default) {
+          if (!process.env[routerCredentialEnv]) {
             await ensureNamedCredential(routerCredentialEnv, "Model Router API key", null);
           }
         }

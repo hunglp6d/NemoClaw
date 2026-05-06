@@ -1327,13 +1327,26 @@ init_nemoclaw_submodules() {
   git -C "$root" submodule update --init --depth 1 2>/dev/null
 }
 
+is_routed_provider_requested() {
+  local provider="${NEMOCLAW_PROVIDER:-}"
+  provider="${provider,,}"
+  [[ "$provider" == "routed" ]]
+}
+
 install_model_router_if_present() {
   local root="$1"
   local router_dir="$root/nemoclaw-blueprint/router/llm-router"
 
-  command_exists pip3 || return 0
-  [[ -d "$router_dir" ]] || return 0
+  if ! command_exists pip3; then
+    is_routed_provider_requested && error "pip3 is required for routed inference."
+    return 0
+  fi
+  if [[ ! -d "$router_dir" ]]; then
+    is_routed_provider_requested && error "llm-router is required for routed inference but is missing."
+    return 0
+  fi
   if [[ ! -f "$router_dir/pyproject.toml" && ! -f "$router_dir/setup.py" ]]; then
+    is_routed_provider_requested && error "llm-router is required for routed inference but is not initialized."
     warn "Skipping model router install — llm-router submodule is not initialized."
     return 0
   fi
@@ -1355,8 +1368,10 @@ install_nemoclaw() {
       spin "Preparing OpenClaw package" bash -c "$(declare -f info warn resolve_openclaw_version pre_extract_openclaw); pre_extract_openclaw \"\$1\"" _ "$NEMOCLAW_SOURCE_ROOT" \
         || warn "Pre-extraction failed — npm install may fail if openclaw tarball is broken"
     fi
-    spin "Initializing ${_CLI_DISPLAY} submodules" init_nemoclaw_submodules "$NEMOCLAW_SOURCE_ROOT" \
-      || warn "Submodule initialization failed — model router support may be unavailable"
+    if ! spin "Initializing ${_CLI_DISPLAY} submodules" init_nemoclaw_submodules "$NEMOCLAW_SOURCE_ROOT"; then
+      is_routed_provider_requested && error "Failed to initialize the llm-router submodule required for routed inference."
+      warn "Submodule initialization failed — model router support may be unavailable"
+    fi
     spin "Installing ${_CLI_DISPLAY} dependencies" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm install --ignore-scripts"
     spin "Building ${_CLI_DISPLAY} CLI modules" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm run --if-present build:cli"
     spin "Building ${_CLI_DISPLAY} plugin" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\"/nemoclaw && npm install --ignore-scripts && npm run build"
@@ -1379,8 +1394,10 @@ install_nemoclaw() {
     mkdir -p "$(dirname "$nemoclaw_src")"
     NEMOCLAW_SOURCE_ROOT="$nemoclaw_src"
     spin "Cloning ${_CLI_DISPLAY} source" clone_nemoclaw_ref "$release_ref" "$nemoclaw_src"
-    spin "Initializing ${_CLI_DISPLAY} submodules" init_nemoclaw_submodules "$nemoclaw_src" \
-      || warn "Submodule initialization failed — model router support may be unavailable"
+    if ! spin "Initializing ${_CLI_DISPLAY} submodules" init_nemoclaw_submodules "$nemoclaw_src"; then
+      is_routed_provider_requested && error "Failed to initialize the llm-router submodule required for routed inference."
+      warn "Submodule initialization failed — model router support may be unavailable"
+    fi
     # Fetch version tags into the shallow clone so `git describe --tags
     # --match "v*"` works at runtime (the shallow clone only has the
     # single ref we asked for).

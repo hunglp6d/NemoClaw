@@ -7,11 +7,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { CLI_NAME } from "./branding";
+import { stripAnsi } from "./adapters/openshell/client";
+import { captureOpenshell, getOpenshellBinary } from "./adapters/openshell/runtime";
 import { dockerCapture, dockerInspect } from "./docker";
-import { stripAnsi } from "./openshell";
 import { parseLiveSandboxNames } from "./runtime-recovery";
 import { ROOT, run, shellQuote, validateName } from "./runner";
-import { captureOpenshell, getOpenshellBinary } from "./openshell-runtime";
 import * as policies from "./policies";
 import * as registry from "./registry";
 import type { SandboxEntry } from "./registry";

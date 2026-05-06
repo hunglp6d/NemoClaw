@@ -18,6 +18,8 @@ export interface OnboardCommandOptions {
   acceptThirdPartySoftware: boolean;
   agent: string | null;
   controlUiPort: number | null;
+  gpu: boolean;
+  noGpu: boolean;
   autoYes: boolean;
 }
 
@@ -42,6 +44,8 @@ const ONBOARD_BASE_ARGS = [
   "--resume",
   "--fresh",
   "--recreate-sandbox",
+  "--gpu",
+  "--no-gpu",
   "--yes",
   "-y",
 ];
@@ -49,9 +53,10 @@ const ONBOARD_BASE_ARGS = [
 function onboardUsageLines(noticeAcceptFlag: string): string[] {
   const name = CLI_NAME;
   return [
-    `  Usage: ${name} onboard [--non-interactive] [--resume | --fresh] [--recreate-sandbox] [--from <Dockerfile>] [--name <sandbox>] [--sandbox-gpu | --no-sandbox-gpu] [--sandbox-gpu-device <device>] [--agent <name>] [--control-ui-port <N>] [--yes | -y] [${noticeAcceptFlag}]`,
+    `  Usage: ${name} onboard [--non-interactive] [--resume | --fresh] [--recreate-sandbox] [--gpu | --no-gpu] [--from <Dockerfile>] [--name <sandbox>] [--sandbox-gpu | --no-sandbox-gpu] [--sandbox-gpu-device <device>] [--agent <name>] [--control-ui-port <N>] [--yes | -y] [${noticeAcceptFlag}]`,
     "",
     "  --from <Dockerfile> uses the Dockerfile's parent directory as the Docker build context.",
+    "  --gpu enables direct NVIDIA GPU access inside the sandbox; --no-gpu forces CPU sandbox behavior.",
     "  --sandbox-gpu enables direct NVIDIA GPU access inside the sandbox; --no-sandbox-gpu forces CPU sandbox behavior.",
     "  --sandbox-gpu-device passes a specific OpenShell GPU device selector to sandbox create.",
     "  Put files referenced by COPY/ADD next to that Dockerfile, or move the Dockerfile into",
@@ -202,6 +207,23 @@ export function parseOnboardArgs(
     printOnboardUsage(error, noticeAcceptFlag);
     exit(1);
   }
+  const gpu = parsedArgs.includes("--gpu");
+  const noGpu = parsedArgs.includes("--no-gpu");
+  if (gpu && noGpu) {
+    error("  --gpu and --no-gpu are mutually exclusive.");
+    printOnboardUsage(error, noticeAcceptFlag);
+    exit(1);
+  }
+  if ((gpu && sandboxGpu === "disable") || (noGpu && sandboxGpu === "enable")) {
+    error("  --gpu/--no-gpu conflict with the sandbox GPU flags.");
+    printOnboardUsage(error, noticeAcceptFlag);
+    exit(1);
+  }
+  if (noGpu && sandboxGpuDevice) {
+    error("  --sandbox-gpu-device cannot be used with --no-gpu.");
+    printOnboardUsage(error, noticeAcceptFlag);
+    exit(1);
+  }
 
   return {
     nonInteractive: parsedArgs.includes("--non-interactive"),
@@ -216,6 +238,8 @@ export function parseOnboardArgs(
       parsedArgs.includes(noticeAcceptFlag) || String(deps.env[noticeAcceptEnv] || "") === "1",
     agent,
     controlUiPort,
+    gpu,
+    noGpu,
     autoYes: parsedArgs.includes("--yes") || parsedArgs.includes("-y"),
   };
 }

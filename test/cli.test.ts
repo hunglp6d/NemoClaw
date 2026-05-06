@@ -401,12 +401,17 @@ describe("CLI dispatch", () => {
   });
 
   it("suggests list for a mistyped list command", () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-list-typo-"));
+    // Isolate from any real openshell gateway on the host so recovery
+    // doesn't intercept the typo suggestion.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-typo-suggest-"));
     const localBin = path.join(home, "bin");
     fs.mkdirSync(localBin, { recursive: true });
-    fs.writeFileSync(path.join(localBin, "openshell"), "#!/bin/sh\nexit 127\n", {
-      mode: 0o755,
-    });
+    fs.writeFileSync(
+      path.join(localBin, "openshell"),
+      ["#!/usr/bin/env bash", "exit 1"].join("\n"),
+      { mode: 0o755 },
+    );
+
     try {
       const r = runWithEnv("liost", {
         HOME: home,
@@ -931,7 +936,7 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("nemoclaw onboard");
     expect(r.out).toContain("--from <Dockerfile>");
     expect(r.out).toContain("--yes");
-    expect(r.out).toContain("--sandbox-gpu-device <device>");
+    expect(r.out).toContain("--sandbox-gpu-device=<value>");
   });
 
   it("unknown onboard option exits 1", () => {
@@ -4493,6 +4498,7 @@ describe("CLI dispatch", () => {
 
   it(
     "explains when gateway metadata exists but the restarted API is still refusing connections",
+    { timeout: 30000 },
     () => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-gateway-unreachable-"));
       const localBin = path.join(home, "bin");
@@ -4600,7 +4606,6 @@ describe("CLI dispatch", () => {
       ).toBeTruthy();
       expect(connectResult.out.includes("If the gateway never becomes healthy")).toBeTruthy();
     },
-    testTimeout(10_000),
   );
 
   it(

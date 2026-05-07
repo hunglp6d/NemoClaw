@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 // Import from compiled dist/ so coverage is attributed correctly.
-import { parsePort } from "../../dist/lib/ports";
+import { parsePort } from "../../../dist/lib/core/ports";
 
 describe("parsePort", () => {
   const ENV_KEY = "TEST_PORT";

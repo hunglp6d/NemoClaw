@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { getVersion } from "../../dist/lib/version";
+import { getVersion } from "../../../dist/lib/core/version";
 
 describe("lib/version", () => {
   let testDir: string;

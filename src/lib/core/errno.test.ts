@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect } from "vitest";
-import { isErrnoException, isPermissionError } from "../src/lib/errno";
+import { isErrnoException, isPermissionError } from "./errno";
 
 describe("isErrnoException", () => {
   it("returns true for Error with code property", () => {

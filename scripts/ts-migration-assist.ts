@@ -26,7 +26,7 @@ const SPECIAL_REWRITES: Record<string, Array<[string, string]>> = {
     ['require("./inference-config")', 'require("../../bin/lib/inference-config")'],
     ['require("./platform")', 'require("../../bin/lib/platform")'],
     ['require("./resolve-openshell")', 'require("../../bin/lib/resolve-openshell")'],
-    ['require("./credentials")', 'require("../../bin/lib/credentials")'],
+    ['require("./credentials/store")', 'require("../../bin/lib/credentials")'],
     ['require("./state/registry")', 'require("../../bin/lib/registry")'],
     ['require("./nim")', 'require("../../bin/lib/nim")'],
     ['require("./onboard-session")', 'require("../../bin/lib/onboard-session")'],

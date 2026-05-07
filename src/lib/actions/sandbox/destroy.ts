@@ -7,8 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { CLI_NAME } from "../../branding";
-import { prompt as askPrompt } from "../../credentials";
+import { CLI_NAME } from "../../cli/branding";
+import { prompt as askPrompt } from "../../credentials/store";
 import {
   type DestroySandboxOptions,
   normalizeDestroySandboxOptions,
@@ -16,7 +16,7 @@ import {
 import * as onboardSession from "../../onboard-session";
 import type { Session } from "../../onboard-session";
 import { OPENSHELL_PROBE_TIMEOUT_MS } from "../../adapters/openshell/timeouts";
-import { DASHBOARD_PORT } from "../../ports";
+import { DASHBOARD_PORT } from "../../core/ports";
 import * as registry from "../../state/registry";
 import { resolveOpenshell } from "../../adapters/openshell/resolve";
 import { parseLiveSandboxNames } from "../../runtime-recovery";
@@ -29,7 +29,7 @@ import {
   shouldCleanupGatewayAfterDestroy,
   shouldStopHostServicesAfterDestroy,
 } from "../../domain/sandbox/destroy";
-import { G, R, YW } from "../../terminal-style";
+import { G, R, YW } from "../../cli/terminal-style";
 
 type DockerRmi = (tag: string, opts?: { ignoreError?: boolean }) => { status: number | null };
 

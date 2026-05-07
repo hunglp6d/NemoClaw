@@ -7,7 +7,7 @@
 // When the session agent is openclaw (or absent), all functions return
 // defaults that match the hardcoded OpenClaw values on main.
 
-import { DASHBOARD_PORT } from "../ports";
+import { DASHBOARD_PORT } from "../core/ports";
 import { shellQuote } from "../runner";
 import * as onboardSession from "../onboard-session";
 import * as registry from "../state/registry";

@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { CLI_NAME } from "../../branding";
+import { CLI_NAME } from "../../cli/branding";
 import { dockerCapture, dockerInspect } from "../../adapters/docker";
 import { stripAnsi } from "../../adapters/openshell/client";
 import { parseLiveSandboxNames } from "../../runtime-recovery";

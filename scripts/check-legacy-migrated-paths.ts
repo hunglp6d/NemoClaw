@@ -38,7 +38,7 @@ const REMOVED_SHIM_MOVES: Record<string, string> = {
   "bin/lib/runtime-recovery.js": "src/lib/runtime-recovery.ts",
   "bin/lib/sandbox-build-context.js": "src/lib/sandbox-build-context.ts",
   "bin/lib/services.js": "src/lib/services.ts",
-  "bin/lib/version.js": "src/lib/version.ts",
+  "bin/lib/version.js": "src/lib/core/version.ts",
   "bin/lib/onboard.js": "src/lib/onboard.ts",
   "bin/lib/policies.js": "src/lib/policies.ts",
   "bin/lib/runner.js": "src/lib/runner.ts",

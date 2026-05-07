@@ -3,8 +3,8 @@
 
 /* v8 ignore start -- exercised through CLI subprocess rebuild tests. */
 
-import { CLI_NAME } from "../../branding";
-import { prompt as askPrompt } from "../../credentials";
+import { CLI_NAME } from "../../cli/branding";
+import { prompt as askPrompt } from "../../credentials/store";
 import {
   normalizeRebuildSandboxOptions,
   type RebuildSandboxOptions,
@@ -37,7 +37,7 @@ import {
 } from "../../state/sandbox-session";
 import * as sandboxState from "../../state/sandbox";
 import * as sandboxVersion from "../../sandbox-version";
-import { B, D, G, R, RD as _RD, YW } from "../../terminal-style";
+import { B, D, G, R, RD as _RD, YW } from "../../cli/terminal-style";
 
 const agentRuntime = require("../../../../bin/lib/agent-runtime");
 

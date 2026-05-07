@@ -10,7 +10,7 @@ import {
   isLoopbackHostname,
   formatEnvAssignment,
   parsePolicyPresetEnv,
-} from "../../dist/lib/url-utils";
+} from "../../../dist/lib/core/url-utils";
 
 describe("compactText", () => {
   it("collapses whitespace", () => {

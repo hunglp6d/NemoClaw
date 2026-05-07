@@ -4,7 +4,7 @@
 /**
  * Canonical secret redaction patterns — single source of truth.
  *
- * All TypeScript consumers import through src/lib/redact.ts (#2381).
+ * All TypeScript consumers import through src/lib/security/redact.ts (#2381).
  * debug.sh delegates to the compiled redact module when node is available;
  * its sed fallback only covers the prefixes in EXPECTED_SHELL_PREFIXES.
  *

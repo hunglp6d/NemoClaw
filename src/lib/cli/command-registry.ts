@@ -16,10 +16,10 @@
  */
 
 import { CLI_NAME } from "./branding";
-import type { CommandDisplayEntry, CommandGroup } from "./cli/command-display";
-import { getRegisteredOclifCommandsMetadata } from "./cli/oclif-metadata";
+import type { CommandDisplayEntry, CommandGroup } from "./command-display";
+import { getRegisteredOclifCommandsMetadata } from "./oclif-metadata";
 
-export type { CommandGroup } from "./cli/command-display";
+export type { CommandGroup } from "./command-display";
 
 /** Replace the canonical "nemoclaw" prefix in a usage string with CLI_NAME. */
 export function brandedUsage(usage: string): string {

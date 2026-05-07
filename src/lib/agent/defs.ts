@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { ROOT } from "../runner";
-import { DASHBOARD_PORT } from "../ports";
+import { DASHBOARD_PORT } from "../core/ports";
 
 export const AGENTS_DIR = path.join(ROOT, "agents");
 

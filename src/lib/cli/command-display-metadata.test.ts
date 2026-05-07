@@ -4,7 +4,7 @@
 import { Config as OclifConfig } from "@oclif/core";
 import { describe, expect, it } from "vitest";
 
-import { getRegisteredOclifCommandsMetadata } from "./cli/oclif-metadata";
+import { getRegisteredOclifCommandsMetadata } from "./oclif-metadata";
 import { COMMANDS, visibleCommands } from "./command-registry";
 
 describe("public command display metadata", () => {

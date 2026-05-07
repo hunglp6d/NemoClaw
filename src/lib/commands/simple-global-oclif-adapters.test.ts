@@ -48,7 +48,7 @@ vi.mock("../uninstall-command", () => ({
   buildVersionedUninstallUrl: mocks.buildVersionedUninstallUrl,
   runUninstallCommand: mocks.runUninstallCommand,
 }));
-vi.mock("../version", () => ({ getVersion: mocks.getVersion }));
+vi.mock("../core/version", () => ({ getVersion: mocks.getVersion }));
 
 import DebugCliCommand from "./debug";
 import DeployCliCommand from "./deploy";

@@ -1719,6 +1719,8 @@ const CREATE_TIME_POLICY_PRESETS_BY_CHANNEL: Record<string, string[]> = {
   slack: ["slack"],
 };
 
+const PROC_COMM_READ_WRITE_PATH = "/proc/self/task/*/comm";
+
 function buildDirectGpuPolicyYaml(basePolicy: string): string {
   const YAML = require("yaml");
   const parsed = YAML.parse(basePolicy);
@@ -1728,15 +1730,18 @@ function buildDirectGpuPolicyYaml(basePolicy: string): string {
   parsed.filesystem_policy = parsed.filesystem_policy || {};
   const fsPolicy = parsed.filesystem_policy;
   fsPolicy.read_only = Array.isArray(fsPolicy.read_only)
-    ? fsPolicy.read_only.filter((entry: unknown) => String(entry) !== "/proc")
+    ? fsPolicy.read_only.map((entry: unknown) => String(entry))
     : [];
+  if (!fsPolicy.read_only.includes("/proc")) {
+    fsPolicy.read_only.push("/proc");
+  }
   const readWrite = Array.isArray(fsPolicy.read_write)
     ? fsPolicy.read_write.map((entry: unknown) => String(entry))
     : [];
-  if (!readWrite.includes("/proc")) {
-    readWrite.push("/proc");
+  fsPolicy.read_write = readWrite.filter((entry: string) => entry !== "/proc");
+  if (!fsPolicy.read_write.includes(PROC_COMM_READ_WRITE_PATH)) {
+    fsPolicy.read_write.push(PROC_COMM_READ_WRITE_PATH);
   }
-  fsPolicy.read_write = readWrite;
   return YAML.stringify(parsed);
 }
 
@@ -5888,7 +5893,7 @@ async function createSandbox(
     );
   }
   if (effectiveSandboxGpuConfig.sandboxGpuEnabled) {
-    console.log("  Direct sandbox GPU enabled; using writable /proc GPU policy variant.");
+    console.log("  Direct sandbox GPU enabled; allowing only /proc task comm writes.");
   }
   const createArgs = [
     "--from",

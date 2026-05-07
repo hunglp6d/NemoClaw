@@ -336,7 +336,7 @@ describe("onboard helpers", () => {
     ).toEqual(["--gpu", "--gpu-device", "nvidia.com/gpu=0"]);
   });
 
-  it("uses writable /proc only in the direct GPU policy variant", () => {
+  it("keeps /proc read-only and narrows GPU proc writes to comm", () => {
     const basePolicy = fs.readFileSync(
       path.join(repoRoot, "nemoclaw-blueprint", "policies", "openclaw-sandbox.yaml"),
       "utf-8",
@@ -346,8 +346,35 @@ describe("onboard helpers", () => {
     const gpuDoc = YAML.parse(gpuPolicy);
 
     expect(baseDoc.filesystem_policy.read_only).toContain("/proc");
-    expect(gpuDoc.filesystem_policy.read_only).not.toContain("/proc");
-    expect(gpuDoc.filesystem_policy.read_write).toContain("/proc");
+    expect(gpuDoc.filesystem_policy.read_only).toContain("/proc");
+    expect(gpuDoc.filesystem_policy.read_write).not.toContain("/proc");
+    expect(gpuDoc.filesystem_policy.read_write).toContain("/proc/self/task/*/comm");
+  });
+
+  it("removes stale broad /proc write entries from GPU policy input", () => {
+    const gpuPolicy = buildDirectGpuPolicyYaml(`
+version: 1
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /usr
+  read_write:
+    - /tmp
+    - /proc
+network_policies:
+  nvidia:
+    name: nvidia
+    endpoints:
+      - host: integrate.api.nvidia.com
+        port: 443
+`);
+    const gpuDoc = YAML.parse(gpuPolicy);
+
+    expect(gpuDoc.filesystem_policy.read_only).toContain("/proc");
+    expect(gpuDoc.filesystem_policy.read_write).toEqual([
+      "/tmp",
+      "/proc/self/task/*/comm",
+    ]);
   });
 
   it("models the Linux OpenShell Docker-driver gateway environment", () => {

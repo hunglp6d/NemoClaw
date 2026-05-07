@@ -306,6 +306,9 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
 }
 
 describe("CLI dispatch", () => {
+  const gatewayCleanupCommand =
+    process.platform === "linux" ? "gateway remove nemoclaw" : "gateway destroy -g nemoclaw";
+
   it("config get validates flags and values before dispatch", async () => {
     const sandboxConfigModule = await import("../dist/lib/sandbox-config.js");
     const { parseConfigGetArgs } = (sandboxConfigModule.default ?? sandboxConfigModule) as {
@@ -2122,7 +2125,7 @@ describe("CLI dispatch", () => {
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("sandbox delete alpha");
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("NAME STATUS");
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("forward stop 18789");
-    expect(fs.readFileSync(openshellLog, "utf8")).toContain("gateway destroy -g nemoclaw");
+    expect(fs.readFileSync(openshellLog, "utf8")).toContain(gatewayCleanupCommand);
     expect(fs.readFileSync(bashLog, "utf8")).toContain("volume ls -q --filter");
   });
 
@@ -2192,6 +2195,7 @@ describe("CLI dispatch", () => {
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("sandbox delete alpha");
     expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("forward stop 18789");
     expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("gateway destroy -g nemoclaw");
+    expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("gateway remove nemoclaw");
     if (fs.existsSync(bashLog)) {
       expect(fs.readFileSync(bashLog, "utf8")).not.toContain("volume ls -q --filter");
     }
@@ -2257,6 +2261,7 @@ describe("CLI dispatch", () => {
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("beta Ready");
     expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("forward stop 18789");
     expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("gateway destroy -g nemoclaw");
+    expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("gateway remove nemoclaw");
     if (fs.existsSync(bashLog)) {
       expect(fs.readFileSync(bashLog, "utf8")).not.toContain("volume ls -q --filter");
     }
@@ -2316,6 +2321,7 @@ describe("CLI dispatch", () => {
     expect(registryAfter.sandboxes.alpha).toBeTruthy();
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("sandbox delete alpha");
     expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("gateway destroy -g nemoclaw");
+    expect(fs.readFileSync(openshellLog, "utf8")).not.toContain("gateway remove nemoclaw");
   });
 
   it("treats an already-missing sandbox as destroyed and clears the stale registry entry", () => {
@@ -2388,7 +2394,7 @@ describe("CLI dispatch", () => {
     expect(registryAfter.sandboxes.alpha).toBeFalsy();
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("sandbox delete alpha");
     expect(fs.readFileSync(openshellLog, "utf8")).toContain("forward stop 18789");
-    expect(fs.readFileSync(openshellLog, "utf8")).toContain("gateway destroy -g nemoclaw");
+    expect(fs.readFileSync(openshellLog, "utf8")).toContain(gatewayCleanupCommand);
     expect(fs.readFileSync(bashLog, "utf8")).toContain("volume ls -q --filter");
   });
 

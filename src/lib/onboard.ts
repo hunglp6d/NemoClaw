@@ -316,6 +316,7 @@ const validationRecovery: typeof import("./validation-recovery") = require("./va
 const webSearch: typeof import("./web-search") = require("./web-search");
 
 import type { AgentDefinition } from "./agent/defs";
+import type { GatewayReuseState } from "./state/gateway";
 import type { CurlProbeResult } from "./http-probe";
 import type { GatewayInference, ProviderSelectionConfig } from "./inference-config";
 import type { GpuInfo, ValidationResult } from "./local-inference";
@@ -3259,17 +3260,96 @@ function sleep(seconds: number): void {
   sleepSeconds(seconds);
 }
 
-function destroyGateway() {
-  const destroyResult = runOpenshell(["gateway", "destroy", "-g", GATEWAY_NAME], {
+function runQuietOpenshell(args: string[]) {
+  return runOpenshell(args, {
     ignoreError: true,
+    stdio: ["ignore", "pipe", "pipe"],
+    suppressOutput: true,
   });
+}
+
+function removeDockerDriverGatewayRegistration(): boolean {
+  const removeResult = runQuietOpenshell(["gateway", "remove", GATEWAY_NAME]);
+  if (removeResult.status === 0) return true;
+
+  // OpenShell dev builds before NVIDIA/OpenShell#1221 used `gateway destroy`
+  // for local metadata cleanup. Post-#1221 builds removed lifecycle verbs and
+  // use `gateway remove` instead, so keep both forms quiet and best-effort.
+  const destroyResult = runQuietOpenshell(["gateway", "destroy", "-g", GATEWAY_NAME]);
+  return destroyResult.status === 0;
+}
+
+function stopDockerDriverGatewayProcess(): boolean {
+  const pid = getDockerDriverGatewayPid();
+  if (pid === null || !isPidAlive(pid)) {
+    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    return false;
+  }
+  if (!isDockerDriverGatewayProcess(pid, resolveOpenShellGatewayBinary())) {
+    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    return false;
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+    for (let i = 0; i < 10; i += 1) {
+      if (!isPidAlive(pid)) break;
+      sleep(1);
+    }
+    if (isPidAlive(pid)) process.kill(pid, "SIGKILL");
+    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    return true;
+  } catch {
+    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    return false;
+  }
+}
+
+async function refreshDockerDriverGatewayReuseState(
+  gatewayReuseState: GatewayReuseState,
+): Promise<GatewayReuseState> {
+  if (!isLinuxDockerDriverGatewayEnabled() || gatewayReuseState !== "healthy") {
+    return gatewayReuseState;
+  }
+  if (isDockerDriverGatewayProcessAlive()) return gatewayReuseState;
+
+  const portCheck = await checkPortAvailable(GATEWAY_PORT);
+  const dockerGatewayPid = getDockerDriverGatewayPortListenerPid(portCheck, {
+    gatewayBin: resolveOpenShellGatewayBinary(),
+  });
+  if (dockerGatewayPid !== null) {
+    rememberDockerDriverGatewayPid(dockerGatewayPid);
+    return "healthy";
+  }
+
+  // `openshell status` already proved the selected gateway is reachable. If
+  // the port probe cannot identify the owning PID, avoid tearing down a live
+  // gateway solely because the pid file is stale.
+  if (!portCheck.ok && !portCheck.pid) return "healthy";
+
+  return "stale";
+}
+
+function destroyGateway(): boolean {
+  const dockerDriver = isLinuxDockerDriverGatewayEnabled();
+  if (dockerDriver) {
+    stopDockerDriverGatewayProcess();
+  }
+
+  const gatewayRemoved = dockerDriver
+    ? removeDockerDriverGatewayRegistration()
+    : runOpenshell(["gateway", "destroy", "-g", GATEWAY_NAME], {
+        ignoreError: true,
+      }).status === 0;
+
   // Clear the local registry so `nemoclaw list` stays consistent with OpenShell state. (#532)
-  if (destroyResult.status === 0) {
+  if (gatewayRemoved) {
     registry.clearAll();
   }
-  // openshell gateway destroy doesn't remove Docker volumes, which leaves
-  // corrupted cluster state that breaks the next gateway start. Clean them up.
+  // Legacy OpenShell gateway cleanup doesn't remove Docker volumes, which
+  // leaves corrupted cluster state that breaks the next gateway start.
   dockerRemoveVolumesByPrefix(`openshell-cluster-${GATEWAY_NAME}`, { ignoreError: true });
+  return gatewayRemoved;
 }
 
 type FinalGatewayStartFailureOptions = {
@@ -3325,6 +3405,8 @@ function handleFinalGatewayStartFailure({
   printError("    openshell doctor check");
   printError("");
   printError("  If gateway cleanup did not complete, run:");
+  printError(`    openshell gateway remove ${GATEWAY_NAME}`);
+  printError(`    # For OpenShell releases that still expose lifecycle commands:`);
   printError(`    openshell gateway destroy -g ${GATEWAY_NAME}`);
   printError(
     `    docker volume ls -q --filter "name=openshell-cluster-${GATEWAY_NAME}" | xargs -r docker volume rm`,
@@ -3620,7 +3702,7 @@ function getDockerDriverGatewayPortListenerPid(
   const pid = Number(portCheck.pid);
   if (!Number.isInteger(pid) || pid <= 0) return null;
   const proc = String(portCheck.process || "").toLowerCase();
-  if (proc !== "openshell" && proc !== "openshell-gateway") return null;
+  if (!proc.startsWith("openshell")) return null;
   const alive = opts.isPidAliveFn ?? isPidAlive;
   if (!alive(pid)) return null;
   const isGateway =
@@ -3671,15 +3753,42 @@ function writeDockerGatewayDebEnvOverride(): void {
 }
 
 function registerDockerDriverGatewayEndpoint(): boolean {
-  const addResult = runOpenshell(
+  const selectExisting = runQuietOpenshell(["gateway", "select", GATEWAY_NAME]);
+  if (selectExisting.status === 0) {
+    const status = runCaptureOpenshell(["status"], { ignoreError: true });
+    const namedInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], {
+      ignoreError: true,
+    });
+    const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
+    if (isGatewayHealthy(status, namedInfo, currentInfo)) {
+      process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
+      return true;
+    }
+  }
+
+  let addResult = runOpenshell(
     ["gateway", "add", "--local", "--name", GATEWAY_NAME, getDockerDriverGatewayEndpoint()],
     { ignoreError: true, suppressOutput: true },
   );
+  if (addResult.status !== 0) {
+    removeDockerDriverGatewayRegistration();
+    addResult = runOpenshell(
+      ["gateway", "add", "--local", "--name", GATEWAY_NAME, getDockerDriverGatewayEndpoint()],
+      { ignoreError: true, suppressOutput: true },
+    );
+  }
   const selectResult = runOpenshell(["gateway", "select", GATEWAY_NAME], {
     ignoreError: true,
     suppressOutput: true,
   });
-  const ok = addResult.status === 0 && selectResult.status === 0;
+  const ok =
+    (addResult.status === 0 && selectResult.status === 0) ||
+    (selectResult.status === 0 &&
+      isGatewayHealthy(
+        runCaptureOpenshell(["status"], { ignoreError: true }),
+        runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], { ignoreError: true }),
+        runCaptureOpenshell(["gateway", "info"], { ignoreError: true }),
+      ));
   if (ok) {
     process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
   } else if (process.env.OPENSHELL_GATEWAY === GATEWAY_NAME) {
@@ -4256,6 +4365,7 @@ async function preflight(
   });
   const activeGatewayInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
   let gatewayReuseState = getGatewayReuseState(gatewayStatus, gwInfo, activeGatewayInfo);
+  gatewayReuseState = await refreshDockerDriverGatewayReuseState(gatewayReuseState);
 
   // Verify the gateway container is actually running — openshell CLI metadata
   // can be stale after a manual `docker rm`. See #2020.
@@ -4290,14 +4400,7 @@ async function preflight(
   if (gatewayReuseState === "stale" || gatewayReuseState === "active-unnamed") {
     console.log(`  Cleaning up previous ${cliDisplayName()} session...`);
     runOpenshell(["forward", "stop", String(DASHBOARD_PORT)], { ignoreError: true });
-    const destroyResult = runOpenshell(["gateway", "destroy", "-g", GATEWAY_NAME], {
-      ignoreError: true,
-    });
-    // Sandboxes under the destroyed gateway no longer exist in OpenShell —
-    // clear the local registry so `nemoclaw list` stays consistent. (#532)
-    if (destroyResult.status === 0) {
-      registry.clearAll();
-    }
+    destroyGateway();
     console.log("  ✓ Previous session cleaned up");
   }
 
@@ -10350,13 +10453,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     });
     const activeGatewayInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
     let gatewayReuseState = getGatewayReuseState(gatewayStatus, gatewayInfo, activeGatewayInfo);
-    if (
-      isLinuxDockerDriverGatewayEnabled() &&
-      gatewayReuseState === "healthy" &&
-      !isDockerDriverGatewayProcessAlive()
-    ) {
-      gatewayReuseState = "stale";
-    }
+    gatewayReuseState = await refreshDockerDriverGatewayReuseState(gatewayReuseState);
 
     // Verify the gateway container is actually running — openshell CLI metadata
     // can be stale after a manual `docker rm`. See #2020.

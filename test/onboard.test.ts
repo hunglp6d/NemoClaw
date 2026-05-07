@@ -399,6 +399,9 @@ network_policies:
       isDockerDriverGatewayPortListener({ ok: false, process: "openshell", pid: 1234 }, opts),
     ).toBe(true);
     expect(
+      isDockerDriverGatewayPortListener({ ok: false, process: "openshell-", pid: 1234 }, opts),
+    ).toBe(true);
+    expect(
       isDockerDriverGatewayPortListener({ ok: false, process: "node", pid: 1234 }, opts),
     ).toBe(false);
     expect(

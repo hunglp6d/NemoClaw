@@ -71,6 +71,22 @@ export function ensureAgentBaseImage(
   const baseImageName = `ghcr.io/nvidia/nemoclaw/${agent.name}-sandbox-base`;
   const baseImageTag = `${baseImageName}:${SANDBOX_BASE_TAG}`;
   const forceBaseImageRebuild = opts.forceBaseImageRebuild === true;
+  if (forceBaseImageRebuild) {
+    console.log(`  Rebuilding ${agent.displayName} base image...`);
+    const buildResult = dockerBuild(baseDockerfile, baseImageTag, ROOT, {
+      ignoreError: true,
+      stdio: ["ignore", "inherit", "inherit"],
+    });
+    if (buildResult.error || buildResult.status !== 0) {
+      const detail = buildResult.error
+        ? `: ${buildResult.error.message}`
+        : ` (exit ${buildResult.status ?? "unknown"})`;
+      throw new Error(`Failed to build ${agent.displayName} base image${detail}`);
+    }
+    console.log(`  \u2713 Base image built: ${baseImageTag}`);
+    return { imageTag: baseImageTag, built: true };
+  }
+
   const resolved = resolveSandboxBaseImage({
     imageName: baseImageName,
     dockerfilePath: baseDockerfile,
@@ -89,17 +105,12 @@ export function ensureAgentBaseImage(
       `No compatible ${agent.displayName} sandbox base image found for ${baseImageName}`,
     );
   }
-  const inspectResult = forceBaseImageRebuild
-    ? null
-    : dockerImageInspect(baseImageTag, {
-        ignoreError: true,
-        suppressOutput: true,
-      });
-  if (forceBaseImageRebuild || inspectResult?.status !== 0) {
-    const message = forceBaseImageRebuild
-      ? `  Rebuilding ${agent.displayName} base image...`
-      : `  Building ${agent.displayName} base image (first time only)...`;
-    console.log(message);
+  const inspectResult = dockerImageInspect(baseImageTag, {
+    ignoreError: true,
+    suppressOutput: true,
+  });
+  if (inspectResult?.status !== 0) {
+    console.log(`  Building ${agent.displayName} base image (first time only)...`);
     const buildResult = dockerBuild(baseDockerfile, baseImageTag, ROOT, {
       ignoreError: true,
       stdio: ["ignore", "inherit", "inherit"],

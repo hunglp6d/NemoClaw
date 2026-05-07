@@ -3510,6 +3510,24 @@ const { setupInference } = require(${onboardPath});
     );
   });
 
+  it("records gateway completion when a fresh onboard reuses an existing gateway", () => {
+    const source = fs.readFileSync(
+      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
+      "utf-8",
+    );
+    const reusePos = source.indexOf('skippedStepMessage("gateway", "running", "reuse")');
+    const nextBranchPos = source.indexOf("} else {", reusePos);
+    const reuseBlock = source.slice(reusePos, nextBranchPos);
+
+    assert.ok(reusePos !== -1, "gateway reuse branch not found");
+    assert.ok(nextBranchPos !== -1, "gateway reuse branch end not found");
+    assert.match(
+      reuseBlock,
+      /onboardSession\.markStepComplete\("gateway"\)/,
+      "reused gateway must be persisted so a later resume can skip it",
+    );
+  });
+
   it("starts the sandbox step before prompting for the sandbox name", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),

@@ -10559,9 +10559,11 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       resume && session?.steps?.gateway?.status === "complete" && canReuseHealthyGateway;
     if (resumeGateway) {
       skippedStepMessage("gateway", "running");
+      onboardSession.markStepComplete("gateway");
     } else if (!resume && canReuseHealthyGateway) {
       skippedStepMessage("gateway", "running", "reuse");
       note("  Reusing healthy NemoClaw gateway.");
+      onboardSession.markStepComplete("gateway");
     } else {
       if (resume && session?.steps?.gateway?.status === "complete") {
         if (gatewayReuseState === "active-unnamed") {

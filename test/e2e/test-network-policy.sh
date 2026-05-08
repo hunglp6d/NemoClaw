@@ -382,21 +382,36 @@ fetch('$target_url', {signal: AbortSignal.timeout(15000)})
 test_net_07_inference_exemption() {
   log "=== TC-NET-07: Inference Exemption + Direct Provider Blocked ==="
 
+  # Step 1: Send prompt via inference.local (should succeed).
+  # Retry up to 3 times — the gateway proxy can return empty or unexpected
+  # responses on the first attempt after policy changes (#1969), matching
+  # the retry pattern used in test-full-e2e.sh.
   log "  Step 1: Send prompt via inference.local (should succeed)..."
-  local inference_response
-  inference_response=$(sandbox_exec "curl -s --max-time 60 https://inference.local/v1/chat/completions \
-    -H 'Content-Type: application/json' \
-    -d '{\"model\":\"nvidia/nemotron-3-super-120b-a12b\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly one word: PONG\"}],\"max_tokens\":50}'" 2>&1) || true
+  local content=""
+  local inference_response=""
+  local attempt
+  for attempt in 1 2 3; do
+    inference_response=$(sandbox_exec "curl -s --max-time 60 https://inference.local/v1/chat/completions \
+      -H 'Content-Type: application/json' \
+      -d '{\"model\":\"nvidia/nemotron-3-super-120b-a12b\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly one word: PONG\"}],\"max_tokens\":50}'" 2>&1) || true
 
-  log "  Inference response: ${inference_response:0:200}"
+    log "  Inference attempt ${attempt}/3 response: ${inference_response:0:200}"
 
-  local content
-  content=$(echo "$inference_response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])" 2>/dev/null) || true
+    content=$(echo "$inference_response" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])" 2>/dev/null) || true
+
+    if [[ -n "$content" ]]; then
+      break
+    fi
+    if [[ $attempt -lt 3 ]]; then
+      log "  Empty or unparseable response, retrying in 5s..."
+      sleep 5
+    fi
+  done
 
   if [[ -n "$content" ]]; then
-    pass "TC-NET-07: Inference via inference.local succeeded"
+    pass "TC-NET-07: Inference via inference.local succeeded (attempt $attempt)"
   else
-    fail "TC-NET-07: Inference" "No response from inference.local: ${inference_response:0:200}"
+    fail "TC-NET-07: Inference" "No response from inference.local after 3 attempts: ${inference_response:0:200}"
     return
   fi
 

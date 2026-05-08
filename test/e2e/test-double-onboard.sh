@@ -119,6 +119,14 @@ gateway_runtime_id() {
   return 1
 }
 
+gateway_alias_endpoint() {
+  local scheme="https"
+  if [ "$(uname -s)" = "Linux" ]; then
+    scheme="http"
+  fi
+  printf '%s://127.0.0.1:%s\n' "$scheme" "${NEMOCLAW_GATEWAY_PORT:-8080}"
+}
+
 stop_gateway_runtime() {
   local pid_file pid cid
   openshell forward stop 18789 2>/dev/null || true
@@ -513,8 +521,8 @@ fi
 section "Phase 4: Third onboard ($SANDBOX_B — different name)"
 info "Running nemoclaw onboard with new sandbox name..."
 
-ALT_GATEWAY_ENDPOINT="https://127.0.0.1:${NEMOCLAW_GATEWAY_PORT:-8080}"
-openshell gateway add --local --name "$ALT_GATEWAY_NAME" "$ALT_GATEWAY_ENDPOINT" >/dev/null 2>&1 || true
+ALT_GATEWAY_ENDPOINT="$(gateway_alias_endpoint)"
+alt_gateway_add_output="$(openshell gateway add --local --name "$ALT_GATEWAY_NAME" "$ALT_GATEWAY_ENDPOINT" 2>&1 || true)"
 if openshell gateway select "$ALT_GATEWAY_NAME" >/dev/null 2>&1; then
   selected_gateway_output="$(
     openshell status 2>&1 || true
@@ -527,7 +535,7 @@ if openshell gateway select "$ALT_GATEWAY_NAME" >/dev/null 2>&1; then
     fail "Alternate gateway alias was not selected before third onboard (selected=${selected_gateway:-unknown})"
   fi
 else
-  fail "Could not select alternate gateway alias before third onboard"
+  fail "Could not select alternate gateway alias before third onboard (add output=${alt_gateway_add_output:-empty})"
 fi
 
 GATEWAY_ID_BEFORE3=$(gateway_runtime_id || true)

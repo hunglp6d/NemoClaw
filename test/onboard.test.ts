@@ -5308,7 +5308,7 @@ const { createSandbox } = require(${onboardPath});
       assert.deepEqual(payload.registeredPolicies, ["slack"]);
       assert.deepEqual(payload.slackBinaryPaths, [
         "/usr/local/bin/hermes",
-        "/usr/bin/python3.11",
+        "/usr/bin/python3*",
         "/opt/hermes/.venv/bin/python",
       ]);
       assert.ok(

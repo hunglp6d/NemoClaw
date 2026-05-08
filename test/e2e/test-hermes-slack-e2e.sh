@@ -400,7 +400,7 @@ if policy_output=$(openshell policy get --full "$SANDBOX_NAME" 2>&1); then
   fi
 
   if echo "$slack_block" | grep -Fq "/usr/local/bin/hermes" \
-    && echo "$slack_block" | grep -Fq "/usr/bin/python3.11" \
+    && echo "$slack_block" | grep -Fq "/usr/bin/python3*" \
     && echo "$slack_block" | grep -Fq "/opt/hermes/.venv/bin/python"; then
     pass "Slack policy is scoped to Hermes and Python binaries"
   else
@@ -427,7 +427,7 @@ fi
 section "Phase 6: Slack placeholder egress from Python"
 
 slack_probe=$(
-  sandbox_exec_stdin "/usr/bin/python3.11 -" <<'PY'
+  sandbox_exec_stdin "/usr/bin/python3 -" <<'PY'
 import json
 import socket
 import sys

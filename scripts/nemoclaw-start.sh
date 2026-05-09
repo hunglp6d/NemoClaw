@@ -372,9 +372,16 @@ apply_model_override() {
   local api_override="${NEMOCLAW_INFERENCE_API_OVERRIDE:-}"
 
   # SECURITY: Validate inputs — reject control characters and enforce length limit.
-  if printf '%s' "$model_override" | grep -qP '[\x00-\x1f\x7f]'; then
+  # Use POSIX [[:cntrl:]] instead of grep -P (PCRE) for portability — slim
+  # container images may lack libpcre2 and grep -P silently returns 2, making
+  # the check a no-op.  return 0 (skip override) instead of return 1 (abort
+  # script) so the validation message reaches Docker stderr before the
+  # container exits; return 1 triggers set -e which races the exec 2>>(tee)
+  # process substitution and can lose the message.  Consistent with every
+  # other validation check in this function.
+  if printf '%s' "$model_override" | LC_ALL=C grep -q '[[:cntrl:]]'; then
     printf '[SECURITY] NEMOCLAW_MODEL_OVERRIDE contains control characters — refusing\n' >&2
-    return 1
+    return 0
   fi
   if [ "${#model_override}" -gt 256 ]; then
     printf '[SECURITY] NEMOCLAW_MODEL_OVERRIDE exceeds 256 characters — refusing\n' >&2
@@ -505,9 +512,10 @@ apply_cors_override() {
 
   local cors_origin="$NEMOCLAW_CORS_ORIGIN"
 
-  if printf '%s' "$cors_origin" | grep -qP '[\x00-\x1f\x7f]'; then
+  # Same portability + race-condition fix as apply_model_override above.
+  if printf '%s' "$cors_origin" | LC_ALL=C grep -q '[[:cntrl:]]'; then
     printf '[SECURITY] NEMOCLAW_CORS_ORIGIN contains control characters — refusing\n' >&2
-    return 1
+    return 0
   fi
   if [ "${#cors_origin}" -gt 256 ]; then
     printf '[SECURITY] NEMOCLAW_CORS_ORIGIN exceeds 256 characters — refusing\n' >&2

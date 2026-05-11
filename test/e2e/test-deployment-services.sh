@@ -228,9 +228,15 @@ test_state_02_backup_restore() {
   local destroy_ok=0
   for destroy_attempt in 1 2 3; do
     nemoclaw "$SANDBOX_NAME" destroy --yes 2>&1 | tee -a "$LOG_FILE" || true
-    if ! nemoclaw list 2>/dev/null | grep -q "$SANDBOX_NAME"; then
-      destroy_ok=1
-      break
+    local list_output list_rc=0
+    list_output=$(nemoclaw list 2>&1) || list_rc=$?
+    if [[ $list_rc -eq 0 ]]; then
+      if ! printf '%s\n' "$list_output" | grep -Fq -- "$SANDBOX_NAME"; then
+        destroy_ok=1
+        break
+      fi
+    else
+      log "  Destroy attempt $destroy_attempt: unable to read sandbox list (exit $list_rc), retrying..."
     fi
     if [[ $destroy_attempt -lt 3 ]]; then
       log "  Destroy attempt $destroy_attempt failed (sandbox still listed), retrying in 10s..."

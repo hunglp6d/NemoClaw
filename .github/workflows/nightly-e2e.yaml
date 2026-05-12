@@ -1981,7 +1981,11 @@ jobs:
         overlayfs-autofix-e2e,
         device-auth-health-e2e,
         launchable-smoke-e2e,
-        brev-e2e,
+        # brev-e2e excluded: reusable-workflow matrix jobs in `needs`
+        # trigger a GitHub Actions startup_failure that prevents the
+        # entire workflow from running.  The brev-e2e job still runs
+        # independently — only the aggregation/notification is skipped
+        # for now.  See the linked issue for details.
         gpu-e2e,
         gpu-double-onboard-e2e,
       ]
@@ -2074,7 +2078,7 @@ jobs:
         overlayfs-autofix-e2e,
         device-auth-health-e2e,
         launchable-smoke-e2e,
-        brev-e2e,
+        # brev-e2e excluded — see notify-on-failure comment.
         gpu-e2e,
         gpu-double-onboard-e2e,
       ]
@@ -2215,7 +2219,7 @@ jobs:
         overlayfs-autofix-e2e,
         device-auth-health-e2e,
         launchable-smoke-e2e,
-        brev-e2e,
+        # brev-e2e excluded — see notify-on-failure comment.
         gpu-e2e,
         gpu-double-onboard-e2e,
       ]

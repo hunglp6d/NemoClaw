@@ -1,0 +1,42 @@
+name: custom-e2e
+
+on:
+  push:
+    branches: [ci/nightly-e2e-self-hosted]
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-e2e-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.ref || 'schedule' }}
+  cancel-in-progress: true
+
+jobs:
+  cloud-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: [ubuntu-latest]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run cloud E2E test
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_SANDBOX_NAME: "e2e-nightly"
+          NEMOCLAW_RECREATE_SANDBOX: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test/e2e/test-full-e2e.sh
+
+      - name: Upload install log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log
+          path: /tmp/nemoclaw-e2e-install.log
+          if-no-files-found: ignore

@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Validation workflow for fix/nightly-e2e-tui-chat-correlation-race-1daf081.
+# Re-runs only the openclaw-tui-chat-correlation-e2e job from the nightly to
+# confirm the fix repairs the intermittent correlation race.
+
+name: custom-e2e
+
+on:
+  push:
+    branches:
+      - fix/nightly-e2e-tui-chat-correlation-race-1daf081-custom-e2e
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openclaw-tui-chat-correlation-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve public install ref
+        id: public_install_ref
+        shell: bash
+        run: |
+          printf 'ref=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.0.0
+        with:
+          node-version: "22"
+
+      - name: Install test dependencies
+        run: npm ci --include=dev
+
+      - name: Run OpenClaw TUI chat correlation E2E test
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_RECREATE_SANDBOX: "1"
+          NEMOCLAW_SANDBOX_NAME: "e2e-openclaw-tui-correlation"
+          NEMOCLAW_PUBLIC_INSTALL_REF: ${{ steps.public_install_ref.outputs.ref }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test/e2e/test-openclaw-tui-chat-correlation.sh
+
+      - name: Upload install log on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: install-log-openclaw-tui-chat-correlation
+          path: /tmp/nemoclaw-e2e-openclaw-tui-correlation-install.log
+          if-no-files-found: ignore

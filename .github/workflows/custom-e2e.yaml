@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Validation workflow for fix/nightly-e2e-status-stale-reconcile-451f26f
+# Runs only double-onboard-e2e to validate the stale-registry reconciliation fix.
+
+name: custom-e2e
+
+on:
+  push:
+    branches: ['fix/nightly-e2e-status-stale-reconcile-451f26f-custom-e2e']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-e2e-stale-reconcile-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  double-onboard-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Install NemoClaw
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+        run: bash install.sh --non-interactive --yes-i-accept-third-party-software
+
+      - name: Run double onboard E2E test
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+        run: |
+          [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc" 2>/dev/null || true
+          export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          [ -d "$HOME/.local/bin" ] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH"
+          bash test/e2e/test-double-onboard.sh
+
+      - name: Upload test log on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: double-onboard-test-log
+          path: test-double-onboard-*.log
+          if-no-files-found: ignore

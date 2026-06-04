@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Validation workflow for fix/nightly-e2e-hermes-base-missing-make-f03b8f3.
+# Re-runs only the failing job from nightly-e2e run 26922066760 on the fix commit.
+# This file lives on a sibling -custom-e2e branch and is NOT part of the fix PR.
+
+name: Custom E2E Validation
+
+on:
+  push:
+    branches:
+      - "fix/nightly-e2e-hermes-base-missing-make-f03b8f3-custom-e2e"
+
+jobs:
+  rebuild-hermes-stale-base-e2e:
+    if: github.repository == 'hunglp6d/NemoClaw'
+    uses: ./.github/workflows/e2e-script.yaml
+    with:
+      ref: ${{ github.sha }}
+      script: test/e2e/test-rebuild-hermes.sh
+      runner: ubuntu-latest
+      timeout_minutes: 60
+      artifact_name: "rebuild-hermes-stale-base-install-log"
+      artifact_path: "/tmp/nemoclaw-e2e-install.log"
+      env_json: '{"NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE":"1","NEMOCLAW_AGENT":"hermes","NEMOCLAW_HERMES_STALE_BASE_REBUILD_E2E":"1","NEMOCLAW_NON_INTERACTIVE":"1","NEMOCLAW_SANDBOX_NAME":"e2e-rebuild-hm-base"}'
+      nvidia_api_key: true
+      github_token: true
+    secrets:
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

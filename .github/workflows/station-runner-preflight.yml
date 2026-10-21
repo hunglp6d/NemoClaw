@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: Station nvidia-smi
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  gpu-check:
+    if: github.repository == 'hunglp6d/NemoClaw' && github.actor == 'hunglp6d'
+    runs-on: [self-hosted, Linux, ARM64, dgx-station]
+    timeout-minutes: 5
+    steps:
+      - name: Run nvidia-smi
+        shell: bash
+        run: nvidia-smi

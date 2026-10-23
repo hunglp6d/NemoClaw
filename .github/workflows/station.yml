@@ -12,7 +12,7 @@ on:
   # Manual dispatch requires this workflow on the default branch. Qualification
   # uses an explicitly pushed branch; pull requests never trigger GPU workloads.
   push:
-    branches: [run-station-v1-e2e/**]
+    branches: [codex-forked/test-dgx-station-e2e]
 
 permissions:
   contents: read
@@ -27,9 +27,9 @@ env:
 jobs:
   station:
     if: >-
-      github.repository == 'NVIDIA/NemoClaw' &&
+      github.repository == 'hunglp6d/NemoClaw' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/v1') ||
-       (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/run-station-v1-e2e/')))
+       (github.event_name == 'push' && github.ref == 'refs/heads/codex-forked/test-dgx-station-e2e'))
     runs-on: [self-hosted, Linux, ARM64, dgx-station]
     timeout-minutes: 150
     steps:
@@ -42,6 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$RUNNER_NAME" = nemoclaw-station-02
           test "$(uname -m)" = aarch64
           if test -e "$HOME/.local/state/nemoclaw-station-e2e/pending.json"; then
             echo 'Station has unfinished cleanup; recover the recorded job first.' >&2

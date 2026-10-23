@@ -7,8 +7,6 @@ on:
   push:
     branches:
       - codex-forked/test-colorunner-spark
-    paths:
-      - .github/workflows/colorunner-gpu-smoke.yml
 
 permissions: {}
 

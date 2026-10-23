@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Colorunner / GPU Smoke
+
+on:
+  push:
+    branches:
+      - codex-forked/test-colorunner-spark
+    paths:
+      - .github/workflows/colorunner-gpu-smoke.yml
+
+permissions: {}
+
+jobs:
+  gpu:
+    if: github.repository == 'hunglp6d/NemoClaw' && github.actor == 'hunglp6d'
+    runs-on: [self-hosted, Linux, ARM64, dgx-spark, colorunner]
+    timeout-minutes: 5
+    steps:
+      - name: Run nvidia-smi
+        run: nvidia-smi
